@@ -24,7 +24,7 @@ create table lineitem_j as
 query T
 select json_structure(j) from lineitem_j limit 1
 ----
-{"l_orderkey":"UBIGINT","l_partkey":"UBIGINT","l_suppkey":"UBIGINT","l_linenumber":"UBIGINT","l_quantity":"DOUBLE","l_extendedprice":"DOUBLE","l_discount":"DOUBLE","l_tax":"DOUBLE","l_returnflag":"VARCHAR","l_linestatus":"VARCHAR","l_shipdate":"VARCHAR","l_commitdate":"VARCHAR","l_receiptdate":"VARCHAR","l_shipinstruct":"VARCHAR","l_shipmode":"VARCHAR","l_comment":"VARCHAR"}
+{"l_orderkey":"BIGINT","l_partkey":"BIGINT","l_suppkey":"BIGINT","l_linenumber":"BIGINT","l_quantity":"DOUBLE","l_extendedprice":"DOUBLE","l_discount":"DOUBLE","l_tax":"DOUBLE","l_returnflag":"VARCHAR","l_linestatus":"VARCHAR","l_shipdate":"VARCHAR","l_commitdate":"VARCHAR","l_receiptdate":"VARCHAR","l_shipinstruct":"VARCHAR","l_shipmode":"VARCHAR","l_comment":"VARCHAR"}
 
 # transform the structure back to what it was and verify it is the same as on the original lineitem table
 query IIIIIIIIIIIII nosort q0

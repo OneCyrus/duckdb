@@ -11,7 +11,7 @@ pragma enable_verification
 query T
 select json_structure('42')
 ----
-"UBIGINT"
+"BIGINT"
 
 query T
 select json_structure('4.2')
@@ -37,7 +37,7 @@ select json_structure('"duck"')
 query T
 select json_structure('{"a": 42}')
 ----
-{"a":"UBIGINT"}
+{"a":"BIGINT"}
 
 query T
 select json_structure('{"a": 4.2}')
@@ -72,12 +72,12 @@ select json_structure('{"a": []}')
 query T
 select json_structure('{"a": [42]}')
 ----
-{"a":["UBIGINT"]}
+{"a":["BIGINT"]}
 
 query T
 select json_structure('{"a": {"b": 42}}')
 ----
-{"a":{"b":"UBIGINT"}}
+{"a":{"b":"BIGINT"}}
 
 # we want strong typing for JSON arrays. If we find inconsistent types, we just set the type to JSON
 query T
@@ -114,27 +114,27 @@ select json_structure('[true,null,false,1,-1,0.42,"42"]')
 query T
 select json_structure('[{"a": 42}, {"a": null}]')
 ----
-[{"a":"UBIGINT"}]
+[{"a":"BIGINT"}]
 
 query T
 select json_structure('[{"a": 42}, {"b": 4.2}]')
 ----
-[{"a":"UBIGINT","b":"DOUBLE"}]
+[{"a":"BIGINT","b":"DOUBLE"}]
 
 query T
 select json_structure('[{"a": [42, null]}, {"a": [7]}]')
 ----
-[{"a":["UBIGINT"]}]
+[{"a":["BIGINT"]}]
 
 query T
 select json_structure('[{"a": [{"b": 42}, {"b": null}]}, {"a": [{"b": 7}]}]')
 ----
-[{"a":[{"b":"UBIGINT"}]}]
+[{"a":[{"b":"BIGINT"}]}]
 
 query T
 select json_structure('[{"a": [{"b": 42}, {"b": null}]}, {"a": [{"c": 7}]}]')
 ----
-[{"a":[{"b":"UBIGINT","c":"UBIGINT"}]}]
+[{"a":[{"b":"BIGINT","c":"BIGINT"}]}]
 
 # inconsistent types
 query T
@@ -156,7 +156,7 @@ select json_structure('[[1], {"a": 1}]')
 query I
 select json_structure('{"a": 42, "a": 7}')
 ----
-{"a":"UBIGINT"}
+{"a":"BIGINT"}
 
 # from a table
 statement ok
@@ -173,14 +173,14 @@ insert into test values
 query T
 select json_structure(j) from test
 ----
-{"family":"VARCHAR","species":["VARCHAR"],"coolness":"UBIGINT"}
-{"family":"VARCHAR","species":["VARCHAR"],"hair":"BOOLEAN","coolness":"UBIGINT"}
+{"family":"VARCHAR","species":["VARCHAR"],"coolness":"BIGINT"}
+{"family":"VARCHAR","species":["VARCHAR"],"hair":"BOOLEAN","coolness":"BIGINT"}
 NULL
 {"family":"NULL","species":"NULL","hair":"NULL","coolness":"NULL"}
-{"family":"VARCHAR","species":["VARCHAR"],"hair":"BOOLEAN","coolness":"UBIGINT"}
+{"family":"VARCHAR","species":["VARCHAR"],"hair":"BOOLEAN","coolness":"BIGINT"}
 
 # issue 11886
 query I
 select json_structure('{"a": 1, "A": 1}');
 ----
-{"a":"UBIGINT","A":"UBIGINT"}
+{"a":"BIGINT","A":"BIGINT"}

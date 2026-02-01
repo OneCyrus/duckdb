@@ -9,13 +9,22 @@
 namespace duckdb {
 
 static bool IsNumeric(LogicalTypeId type) {
-	return type == LogicalTypeId::DOUBLE || type == LogicalTypeId::UBIGINT || type == LogicalTypeId::BIGINT;
+	return type == LogicalTypeId::DOUBLE || type == LogicalTypeId::UBIGINT || type == LogicalTypeId::BIGINT ||
+	       type == LogicalTypeId::HUGEINT;
 }
 
 static LogicalTypeId MaxNumericType(const LogicalTypeId &a, const LogicalTypeId &b) {
 	D_ASSERT(a != b);
 	if (a == LogicalTypeId::DOUBLE || b == LogicalTypeId::DOUBLE) {
 		return LogicalTypeId::DOUBLE;
+	}
+	if (a == LogicalTypeId::HUGEINT || b == LogicalTypeId::HUGEINT) {
+		return LogicalTypeId::HUGEINT;
+	}
+	// One is BIGINT and the other is UBIGINT - need HUGEINT to represent both ranges
+	if ((a == LogicalTypeId::BIGINT && b == LogicalTypeId::UBIGINT) ||
+	    (a == LogicalTypeId::UBIGINT && b == LogicalTypeId::BIGINT)) {
+		return LogicalTypeId::HUGEINT;
 	}
 	return LogicalTypeId::BIGINT;
 }
@@ -798,7 +807,7 @@ LogicalType JSONStructure::StructureToType(ClientContext &context, const JSONStr
 	case LogicalTypeId::VARCHAR:
 		return StructureToTypeString(node);
 	case LogicalTypeId::UBIGINT:
-		return LogicalTypeId::BIGINT; // We prefer not to return UBIGINT in our type auto-detection
+		return LogicalTypeId::UBIGINT;
 	case LogicalTypeId::SQLNULL:
 		return null_type;
 	default:
