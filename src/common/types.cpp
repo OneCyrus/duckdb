@@ -1054,8 +1054,13 @@ static bool CombineEqualTypes(const LogicalType &left, const LogicalType &right,
 		result = left == right ? left : LogicalType::VARCHAR;
 		return true;
 	case LogicalTypeId::VARCHAR:
-		// varchar: use type that has collation (if any)
-		if (StringType::GetCollation(right).empty()) {
+		// varchar: prefer plain VARCHAR over JSON (JSON is just VARCHAR with an alias)
+		if (left.IsJSONType() && !right.IsJSONType()) {
+			result = right;
+		} else if (right.IsJSONType() && !left.IsJSONType()) {
+			result = left;
+		} else if (StringType::GetCollation(right).empty()) {
+			// use type that has collation (if any)
 			result = left;
 		} else {
 			result = right;
@@ -1131,11 +1136,13 @@ static bool CombineEqualTypes(const LogicalType &left, const LogicalType &right,
 template <class OP>
 bool TryGetMaxLogicalTypeInternal(const LogicalType &left, const LogicalType &right, LogicalType &result) {
 	// we always prefer aliased types
-	if (!left.GetAlias().empty()) {
+	// exception: JSON is VARCHAR with a "json" alias - plain VARCHAR is more general
+	// so when combining JSON and VARCHAR, we should fall through to CombineEqualTypes
+	if (!left.GetAlias().empty() && !(left.IsJSONType() && right.id() == LogicalTypeId::VARCHAR)) {
 		result = left;
 		return true;
 	}
-	if (!right.GetAlias().empty()) {
+	if (!right.GetAlias().empty() && !(right.IsJSONType() && left.id() == LogicalTypeId::VARCHAR)) {
 		result = right;
 		return true;
 	}
