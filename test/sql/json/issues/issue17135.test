@@ -14,7 +14,7 @@ copy (select * from (values ('{"id":9223372036854775808}'))) to '__TEST_DIR__/ub
 query II
 select typeof(id), id from read_json('__TEST_DIR__/ubigint.json')
 ----
-UBIGINT	9223372036854775808
+HUGEINT	9223372036854775808
 
 # max UBIGINT value
 statement ok
@@ -23,15 +23,21 @@ copy (select * from (values ('{"id":18446744073709551615}'))) to '__TEST_DIR__/u
 query II
 select typeof(id), id from read_json('__TEST_DIR__/ubigint_max.json')
 ----
-UBIGINT	18446744073709551615
+HUGEINT	18446744073709551615
 
-# json_structure should detect UBIGINT for large values
+# json_structure should still detect UBIGINT for large values
 query T
 select json_structure('{"id":9223372036854775808}')
 ----
 {"id":"UBIGINT"}
 
-# small positive integers should still be BIGINT
+# json_structure detects UBIGINT for small positive integers too (yyjson tags all positive ints as UINT)
+query T
+select json_structure('{"id":42}')
+----
+{"id":"UBIGINT"}
+
+# small positive integers should still be BIGINT from read_json
 statement ok
 copy (select * from (values ('{"id":42}'))) to '__TEST_DIR__/bigint.json' (format csv, quote '', header 0)
 
@@ -40,7 +46,7 @@ select typeof(id), id from read_json('__TEST_DIR__/bigint.json')
 ----
 BIGINT	42
 
-# mixed BIGINT and UBIGINT values should use HUGEINT
+# mixed negative and large unsigned values should use HUGEINT
 statement ok
 copy (select * from (values ('{"id":-5}'), ('{"id":9223372036854775808}'))) to '__TEST_DIR__/mixed.json' (format csv, quote '', header 0)
 

@@ -177,10 +177,7 @@ public:
 		case YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_FALSE:
 			return LogicalTypeId::BOOLEAN;
 		case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_UINT:
-			if (unsafe_yyjson_get_uint(val) > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-				return LogicalTypeId::UBIGINT;
-			}
-			return LogicalTypeId::BIGINT;
+			return LogicalTypeId::UBIGINT;
 		case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_SINT:
 			return LogicalTypeId::BIGINT;
 		case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_REAL:
