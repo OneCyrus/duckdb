@@ -276,6 +276,7 @@ void ParquetWriter::SetSchemaProperties(const LogicalType &duckdb_type, duckdb_p
 				schema_ele.logicalType.GEOMETRY.crs = crs.GetDefinition();
 			}
 		}
+		break;
 	case LogicalTypeId::SQLNULL:
 		schema_ele.__isset.logicalType = true;
 		schema_ele.logicalType.__set_UNKNOWN(duckdb_parquet::NullType());
