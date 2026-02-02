@@ -177,8 +177,6 @@ public:
 		case YYJSON_TYPE_BOOL | YYJSON_SUBTYPE_FALSE:
 			return LogicalTypeId::BOOLEAN;
 		case YYJSON_TYPE_NUM | YYJSON_SUBTYPE_UINT:
-			// yyjson tags all positive integers as UINT, but we only need UBIGINT
-			// for values that exceed the BIGINT range (>= 2^63)
 			if (unsafe_yyjson_get_uint(val) > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
 				return LogicalTypeId::UBIGINT;
 			}
