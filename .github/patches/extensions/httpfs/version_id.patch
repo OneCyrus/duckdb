@@ -1,0 +1,140 @@
+diff --git a/src/httpfs.cpp b/src/httpfs.cpp
+index b7252fd..cd61991 100644
+--- a/src/httpfs.cpp
++++ b/src/httpfs.cpp
+@@ -237,6 +237,10 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRequest(FileHandle &handle, string u
+ 			    }
+ 			    throw HTTPException(error);
+ 		    }
++		    // Capture S3 version ID if not already set
++		    if (hfh.version_id.empty() && response.HasHeader("x-amz-version-id")) {
++			    hfh.version_id = response.GetHeaderValue("x-amz-version-id");
++		    }
+ 		    return true;
+ 	    },
+ 	    [&](const_data_ptr_t data, idx_t data_length) {
+@@ -311,6 +315,11 @@ unique_ptr<HTTPResponse> HTTPFileSystem::GetRangeRequest(FileHandle &handle, str
+ 				    }
+ 			    }
+ 
++			    // Capture S3 version ID if not already set (fallback for when HEAD didn't return it)
++			    if (hfh.version_id.empty() && response.HasHeader("x-amz-version-id")) {
++				    hfh.version_id = response.GetHeaderValue("x-amz-version-id");
++			    }
++
+ 			    if (response.HasHeader("Content-Length")) {
+ 				    auto content_length = stoll(response.GetHeaderValue("Content-Length"));
+ 				    if ((idx_t)content_length != buffer_out_len) {
+@@ -831,6 +840,11 @@ void HTTPFileHandle::LoadFileInfo() {
+ 	if (res->headers.HasHeader("ETag")) {
+ 		etag = res->headers.GetHeaderValue("ETag");
+ 	}
++	// Capture S3 version ID for versioned buckets - this allows consistent reads
++	// even when the file is updated during incremental reading
++	if (res->headers.HasHeader("x-amz-version-id")) {
++		version_id = res->headers.GetHeaderValue("x-amz-version-id");
++	}
+ 	initialized = true;
+ }
+ 
+@@ -858,6 +872,10 @@ void HTTPFileHandle::InitializeFromCacheEntry(const HTTPMetadataCacheEntry &cach
+ 	last_modified = cache_entry.last_modified;
+ 	length = cache_entry.length;
+ 	etag = cache_entry.etag;
++	auto version_id_entry = cache_entry.properties.find("version_id");
++	if (version_id_entry != cache_entry.properties.end()) {
++		version_id = version_id_entry->second;
++	}
+ }
+ 
+ HTTPMetadataCacheEntry HTTPFileHandle::GetCacheEntry() const {
+@@ -865,6 +883,9 @@ HTTPMetadataCacheEntry HTTPFileHandle::GetCacheEntry() const {
+ 	result.length = length;
+ 	result.last_modified = last_modified;
+ 	result.etag = etag;
++	if (!version_id.empty()) {
++		result.properties["version_id"] = version_id;
++	}
+ 	return result;
+ }
+ 
+diff --git a/src/include/httpfs.hpp b/src/include/httpfs.hpp
+index 5d76ddf..ab23802 100644
+--- a/src/include/httpfs.hpp
++++ b/src/include/httpfs.hpp
+@@ -63,6 +63,8 @@ public:
+ 	idx_t length;
+ 	timestamp_t last_modified;
+ 	string etag;
++	//! S3 version ID for versioned buckets - ensures consistent reads across range requests
++	string version_id;
+ 	bool force_full_download;
+ 	bool initialized = false;
+ 
+diff --git a/src/s3fs.cpp b/src/s3fs.cpp
+index 3143014..2210d5b 100644
+--- a/src/s3fs.cpp
++++ b/src/s3fs.cpp
+@@ -858,9 +858,17 @@ unique_ptr<HTTPResponse> S3FileSystem::HeadRequest(FileHandle &handle, string s3
+ }
+ 
+ unique_ptr<HTTPResponse> S3FileSystem::GetRequest(FileHandle &handle, string s3_url, HTTPHeaders header_map) {
+-	auto auth_params = handle.Cast<S3FileHandle>().auth_params;
++	auto &s3_handle = handle.Cast<S3FileHandle>();
++	auto auth_params = s3_handle.auth_params;
+ 	auto parsed_s3_url = S3UrlParse(s3_url, auth_params);
+-	string http_url = parsed_s3_url.GetHTTPUrl(auth_params);
++
++	// Build query string with versionId if available (for S3 versioned buckets)
++	string query_string;
++	if (!s3_handle.version_id.empty()) {
++		query_string = "versionId=" + UrlEncode(s3_handle.version_id, true);
++	}
++
++	string http_url = parsed_s3_url.GetHTTPUrl(auth_params, query_string);
+ 
+ 	HTTPHeaders headers;
+ 	if (IsGCSRequest(s3_url) && !auth_params.oauth2_bearer_token.empty()) {
+@@ -868,8 +876,8 @@ unique_ptr<HTTPResponse> S3FileSystem::GetRequest(FileHandle &handle, string s3_
+ 		headers["Authorization"] = "Bearer " + auth_params.oauth2_bearer_token;
+ 		headers["Host"] = parsed_s3_url.host;
+ 	} else {
+-		// Use existing S3 authentication
+-		headers = CreateS3Header(parsed_s3_url.path, "", parsed_s3_url.host, "s3", "GET", auth_params, "", "", "", "");
++		// Use existing S3 authentication (query_string is included in signature)
++		headers = CreateS3Header(parsed_s3_url.path, query_string, parsed_s3_url.host, "s3", "GET", auth_params, "", "", "", "");
+ 	}
+ 
+ 	return HTTPFileSystem::GetRequest(handle, http_url, headers);
+@@ -877,9 +885,18 @@ unique_ptr<HTTPResponse> S3FileSystem::GetRequest(FileHandle &handle, string s3_
+ 
+ unique_ptr<HTTPResponse> S3FileSystem::GetRangeRequest(FileHandle &handle, string s3_url, HTTPHeaders header_map,
+                                                        idx_t file_offset, char *buffer_out, idx_t buffer_out_len) {
+-	auto auth_params = handle.Cast<S3FileHandle>().auth_params;
++	auto &s3_handle = handle.Cast<S3FileHandle>();
++	auto auth_params = s3_handle.auth_params;
+ 	auto parsed_s3_url = S3UrlParse(s3_url, auth_params);
+-	string http_url = parsed_s3_url.GetHTTPUrl(auth_params);
++
++	// Build query string with versionId if available (for S3 versioned buckets)
++	// This ensures we read from the same object version even if a newer version is uploaded
++	string query_string;
++	if (!s3_handle.version_id.empty()) {
++		query_string = "versionId=" + UrlEncode(s3_handle.version_id, true);
++	}
++
++	string http_url = parsed_s3_url.GetHTTPUrl(auth_params, query_string);
+ 
+ 	HTTPHeaders headers;
+ 	if (IsGCSRequest(s3_url) && !auth_params.oauth2_bearer_token.empty()) {
+@@ -887,8 +904,8 @@ unique_ptr<HTTPResponse> S3FileSystem::GetRangeRequest(FileHandle &handle, strin
+ 		headers["Authorization"] = "Bearer " + auth_params.oauth2_bearer_token;
+ 		headers["Host"] = parsed_s3_url.host;
+ 	} else {
+-		// Use existing S3 authentication
+-		headers = CreateS3Header(parsed_s3_url.path, "", parsed_s3_url.host, "s3", "GET", auth_params, "", "", "", "");
++		// Use existing S3 authentication (query_string is included in signature)
++		headers = CreateS3Header(parsed_s3_url.path, query_string, parsed_s3_url.host, "s3", "GET", auth_params, "", "", "", "");
+ 	}
+ 
+ 	return HTTPFileSystem::GetRangeRequest(handle, http_url, headers, file_offset, buffer_out, buffer_out_len);
