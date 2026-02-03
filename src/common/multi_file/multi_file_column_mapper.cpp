@@ -587,14 +587,7 @@ unique_ptr<Expression> ConstructMapExpression(ClientContext &context, idx_t loca
 	    is_trivially_mappable) {
 		// not a struct - potentially add a cast
 		if (local_column.type != global_column.type) {
-			// JSON is VARCHAR with an alias - they share the same physical representation
-			// no cast is needed between them (casting VARCHAR to JSON would fail for non-JSON strings)
-			if (local_column.type.id() == LogicalTypeId::VARCHAR &&
-			    global_column.type.id() == LogicalTypeId::VARCHAR) {
-				expr->return_type = global_column.type;
-			} else {
-				expr = BoundCastExpression::AddCastToType(context, std::move(expr), global_column.type);
-			}
+			expr = BoundCastExpression::AddCastToType(context, std::move(expr), global_column.type);
 		}
 		return expr;
 	}
@@ -710,8 +703,7 @@ ResultColumnMapping MultiFileColumnMapper::CreateColumnMappingByMapper(const Col
 			auto &local_type = local_columns[local_id.GetId()].type;
 			auto &global_type = global_column.type;
 			auto expr = make_uniq<BoundReferenceExpression>(global_type, local_idx.GetIndex());
-			if (global_type != local_type &&
-			    !(global_type.id() == LogicalTypeId::VARCHAR && local_type.id() == LogicalTypeId::VARCHAR)) {
+			if (global_type != local_type) {
 				reader.cast_map[local_id.GetId()] = global_type;
 			} else {
 				// if types are equivalent we can push the parent ColumnIndex mapping

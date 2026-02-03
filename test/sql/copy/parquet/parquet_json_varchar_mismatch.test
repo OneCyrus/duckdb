@@ -37,8 +37,15 @@ SELECT * FROM read_parquet('__TEST_DIR__/json_varchar_mismatch*.parquet', union_
 TEST 1	NULL
 TEST 1	a
 
-# The null-only column is inferred as JSON by the JSON reader (since all values are null)
+# The null-only column is inferred as SQLNULL by the JSON reader (since all values are null)
+# and written as UNKNOWN (NullType) in the parquet file
 query I
 SELECT typeof(memberDn) FROM '__TEST_DIR__/json_varchar_mismatch1.json';
 ----
-JSON
+"NULL"
+
+# Verify the parquet file has UNKNOWN logical type for the all-null column
+query I
+SELECT logical_type FROM parquet_schema('__TEST_DIR__/json_varchar_mismatch1.parquet') WHERE name='memberDn';
+----
+NullType()
