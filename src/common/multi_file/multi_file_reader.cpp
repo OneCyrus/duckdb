@@ -568,6 +568,45 @@ MultiFileReaderBindData MultiFileReader::BindReader(ClientContext &context, vect
 			return_types.emplace_back(column.type);
 			names.emplace_back(column.name);
 		}
+
+		// Check if any columns have SQLNULL type - if so, look at subsequent files to find concrete types
+		// This allows combining files where the first file has all-null columns (e.g., from Arrow with NullType)
+		bool has_null_types = false;
+		for (auto &type : return_types) {
+			if (type.id() == LogicalTypeId::SQLNULL) {
+				has_null_types = true;
+				break;
+			}
+		}
+
+		if (has_null_types) {
+			// Scan additional files to find concrete types for SQLNULL columns
+			// This allows combining files where the first file has all-null columns (e.g., from Arrow with NullType)
+			MultiFileListScanData scan_data;
+			files.InitializeScan(scan_data);
+			OpenFileInfo file_info;
+			// Skip the first file (already processed)
+			files.Scan(scan_data, file_info);
+			// Check up to 10 additional files
+			for (idx_t file_idx = 0; file_idx < 10 && has_null_types && files.Scan(scan_data, file_info); file_idx++) {
+				auto file_reader = CreateReader(context, file_info, options, file_options, *result.interface);
+				auto &file_columns = file_reader->GetColumns();
+				if (file_columns.size() == return_types.size()) {
+					has_null_types = false;
+					for (idx_t col_idx = 0; col_idx < return_types.size(); col_idx++) {
+						if (return_types[col_idx].id() == LogicalTypeId::SQLNULL &&
+						    file_columns[col_idx].type.id() != LogicalTypeId::SQLNULL) {
+							// Found a concrete type for this SQLNULL column - upgrade the schema
+							return_types[col_idx] = file_columns[col_idx].type;
+						}
+						if (return_types[col_idx].id() == LogicalTypeId::SQLNULL) {
+							has_null_types = true;
+						}
+					}
+				}
+			}
+		}
+
 		result.Initialize(std::move(reader));
 		MultiFileReaderBindData bind_data;
 		BindOptions(file_options, files, return_types, names, bind_data);
