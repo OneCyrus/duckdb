@@ -569,7 +569,6 @@ MultiFileReaderBindData MultiFileReader::BindReader(ClientContext &context, vect
 			names.emplace_back(column.name);
 		}
 		result.Initialize(std::move(reader));
-
 		MultiFileReaderBindData bind_data;
 		BindOptions(file_options, files, return_types, names, bind_data);
 		return bind_data;
