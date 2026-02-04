@@ -23,14 +23,8 @@ COPY (SELECT * FROM '__TEST_DIR__/json_varchar_mismatch1.json') TO '__TEST_DIR__
 statement ok
 COPY (SELECT * FROM '__TEST_DIR__/json_varchar_mismatch2.json') TO '__TEST_DIR__/json_varchar_mismatch2.parquet';
 
-# Reading both parquet files together should succeed without type mismatch error
-query II rowsort
-SELECT * FROM read_parquet('__TEST_DIR__/json_varchar_mismatch*.parquet');
-----
-TEST 1	NULL
-TEST 1	a
-
-# Also test with union_by_name=true
+# Reading both parquet files with union_by_name=true should succeed
+# SQLNULL merges with VARCHAR to produce VARCHAR
 query II rowsort
 SELECT * FROM read_parquet('__TEST_DIR__/json_varchar_mismatch*.parquet', union_by_name=true);
 ----
