@@ -781,7 +781,7 @@ LogicalType JSONStructure::StructureToType(ClientContext &context, const JSONStr
 		return LogicalType::JSON();
 	}
 	if (node.descriptions.empty()) {
-		return null_type;
+		return LogicalType::JSON(); // no data observed, fall back to generic JSON type
 	}
 	if (node.descriptions.size() != 1) { // Inconsistent types, so we resort to JSON
 		return LogicalType::JSON();
