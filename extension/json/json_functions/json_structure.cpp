@@ -800,7 +800,7 @@ LogicalType JSONStructure::StructureToType(ClientContext &context, const JSONStr
 	case LogicalTypeId::UBIGINT:
 		return LogicalTypeId::BIGINT; // We prefer not to return UBIGINT in our type auto-detection
 	case LogicalTypeId::SQLNULL:
-		return null_type;
+		return LogicalType::SQLNULL;
 	default:
 		return desc.type;
 	}
