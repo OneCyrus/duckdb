@@ -193,11 +193,8 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 	}
 
 	// Convert structure to logical type
-	// Use SQLNULL for formats that support it (e.g. Parquet), so null/empty columns get the proper NullType.
-	// For other formats (JSON, Avro, etc.) fall back to JSON() to avoid inferring INTEGER for null columns.
-	const auto null_type = options.supports_sql_null ? LogicalType::SQLNULL : LogicalType::JSON();
 	auto type = JSONStructure::StructureToType(context, node, options.max_depth, options.field_appearance_threshold,
-	                                           options.map_inference_threshold, 0, null_type);
+	                                           options.map_inference_threshold);
 
 	// Auto-detect record type
 	if (json_data.options.record_type == JSONRecordType::AUTO_DETECT) {

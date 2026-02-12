@@ -713,8 +713,9 @@ static LogicalType StructureToTypeObject(ClientContext &context, const JSONStruc
 
 	if (desc.children.empty()) {
 		if (map_inference_threshold != DConstants::INVALID_INDEX) {
-			// Empty struct - let's do MAP of JSON instead
-			return LogicalType::MAP(LogicalType::VARCHAR, null_type);
+			// Empty struct - use MAP(VARCHAR, JSON) as a generic container;
+			// JSON() is safe for all output formats and is not affected by ExchangeNullType
+			return LogicalType::MAP(LogicalType::VARCHAR, LogicalType::JSON());
 		} else {
 			return LogicalType::JSON();
 		}
