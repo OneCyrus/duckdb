@@ -216,11 +216,13 @@ public:
 
 	string extension;
 
-	//! Whether this copy function supports writing SQLNULL (e.g. Parquet UNKNOWN/NullType)
-	bool supports_sql_null = false;
-
 	//! Additional function info, passed to the bind
 	shared_ptr<CopyFunctionInfo> function_info;
+
+	//! Whether this copy function supports writing SQLNULL (e.g. Parquet UNKNOWN/NullType)
+	//! NOTE: this field must remain AFTER function_info to preserve ABI compatibility with
+	//! extensions compiled against older DuckDB versions that don't have this field.
+	bool supports_sql_null = false;
 };
 
 } // namespace duckdb
