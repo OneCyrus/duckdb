@@ -2,6 +2,7 @@
 
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/extra_type_info.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "json_executors.hpp"
 #include "json_scan.hpp"
 #include "json_transform.hpp"
@@ -374,11 +375,21 @@ JSONStructureNode &JSONStructureDescription::GetOrCreateChild() {
 }
 
 JSONStructureNode &JSONStructureDescription::GetOrCreateChild(const char *key_ptr, const size_t key_size) {
-	// Check if there is already a child with the same key
+	// Check if there is already a child with the same key (exact match)
 	const JSONKey temp_key {key_ptr, key_size};
 	const auto it = key_map.find(temp_key);
 	if (it != key_map.end()) {
 		return children[it->second]; // Found it
+	}
+
+	// Check for a case-insensitive match: DuckDB uses case-insensitive column semantics,
+	// so "retention" and "Retention" from different records should map to the same field.
+	for (auto &child : children) {
+		D_ASSERT(child.key);
+		const auto &child_key = *child.key;
+		if (StringUtil::CIEquals(child_key.c_str(), child_key.length(), key_ptr, key_size)) {
+			return child; // Found a case-insensitive match - merge into existing child
+		}
 	}
 
 	// Didn't find, create a new child
