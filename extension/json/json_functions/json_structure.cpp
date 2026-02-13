@@ -382,22 +382,24 @@ JSONStructureNode &JSONStructureDescription::GetOrCreateChild(const char *key_pt
 		return children[it->second]; // Found it
 	}
 
-	// Check for a case-insensitive match: DuckDB uses case-insensitive column semantics,
-	// so "retention" and "Retention" from different records should map to the same field.
-	for (auto &child : children) {
-		D_ASSERT(child.key);
-		const auto &child_key = *child.key;
-		if (StringUtil::CIEquals(child_key.c_str(), child_key.length(), key_ptr, key_size)) {
-			return child; // Found a case-insensitive match - merge into existing child
-		}
-	}
-
 	// Didn't find, create a new child
 	children.emplace_back(key_ptr, key_size);
 	const auto &persistent_key_string = *children.back().key;
 	JSONKey new_key {persistent_key_string.c_str(), persistent_key_string.length()};
 	key_map.emplace(new_key, children.size() - 1);
 	return children.back();
+}
+
+JSONStructureNode *JSONStructureDescription::FindChildCI(const char *key_ptr, const size_t key_size) {
+	// Case-insensitive linear scan: used to detect cross-record duplicate keys with different casing
+	for (auto &child : children) {
+		D_ASSERT(child.key);
+		const auto &child_key = *child.key;
+		if (StringUtil::CIEquals(child_key.c_str(), child_key.length(), key_ptr, key_size)) {
+			return &child;
+		}
+	}
+	return nullptr;
 }
 
 JSONStructureNode &JSONStructureDescription::GetOrCreateChild(yyjson_val *key, yyjson_val *val,
@@ -431,16 +433,28 @@ static void ExtractStructureObject(yyjson_val *obj, JSONStructureNode &node, con
 	size_t idx, max;
 	yyjson_val *key, *val;
 	yyjson_obj_foreach(obj, idx, max, key, val) {
-		const string obj_key(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key));
+		const char *key_ptr = unsafe_yyjson_get_str(key);
+		const size_t key_size = unsafe_yyjson_get_len(key);
+		const string obj_key(key_ptr, key_size);
 		auto insert_result = obj_keys.insert(obj_key);
 		if (!ignore_errors && !insert_result.second) { // Exact match
 			JSONCommon::ThrowValFormatError("Duplicate key \"" + obj_key + "\" in object %s", obj);
 		}
-		insert_result = ci_obj_keys.insert(obj_key);
-		if (!ignore_errors && !insert_result.second) { // Case-insensitive match
+		const bool is_same_obj_ci_dup = !ci_obj_keys.insert(obj_key).second;
+		if (!ignore_errors && is_same_obj_ci_dup) { // Case-insensitive match within same object
 			JSONCommon::ThrowValFormatError("Duplicate key (different case) \"" + obj_key + "\" and \"" +
-			                                    *insert_result.first + "\" in object %s",
+			                                    *ci_obj_keys.find(obj_key) + "\" in object %s",
 			                                obj);
+		}
+		if (!is_same_obj_ci_dup) {
+			// Key is unique within this object. Check if a previous record used the same key with
+			// different casing (cross-record CI duplicate). If so, merge into that existing child
+			// rather than creating a new one with a different case spelling.
+			auto *ci_child = description.FindChildCI(key_ptr, key_size);
+			if (ci_child) {
+				JSONStructure::ExtractStructure(val, *ci_child, ignore_errors);
+				continue;
+			}
 		}
 		description.GetOrCreateChild(key, val, ignore_errors);
 	}
@@ -574,7 +588,12 @@ static void MergeNodeObject(JSONStructureNode &merged, const JSONStructureDescri
 	auto &merged_desc = merged.GetOrCreateDescription(LogicalTypeId::STRUCT);
 	for (auto &struct_child : child_desc.children) {
 		const auto &struct_child_key = *struct_child.key;
-		auto &merged_child = merged_desc.GetOrCreateChild(struct_child_key.c_str(), struct_child_key.length());
+		// Use case-insensitive lookup when merging: if the task node has "Retention" but the merged
+		// node already has "retention" (from a different task), merge into the existing child rather
+		// than creating a duplicate with a different case spelling.
+		auto *ci_child = merged_desc.FindChildCI(struct_child_key.c_str(), struct_child_key.length());
+		auto &merged_child = ci_child ? *ci_child
+		                              : merged_desc.GetOrCreateChild(struct_child_key.c_str(), struct_child_key.length());
 		JSONStructure::MergeNodes(merged_child, struct_child);
 	}
 }
