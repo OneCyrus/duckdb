@@ -5,13 +5,13 @@
 require json
 
 # issue 10751
-# Case-insensitive duplicate keys within the same JSON object are now merged instead of erroring,
-# since DuckDB uses case-insensitive column semantics.
-statement ok
+statement error
 create or replace table json_test as select * from read_json_auto('{DATA_DIR}/json/10751.json', format = 'newline_delimited');
+----
+Not implemented Error: Duplicate name
 
 statement ok
-create or replace table json_test as select * from read_json_auto('{DATA_DIR}/json/10751.json', format = 'newline_delimited', ignore_errors=true);
+create table json_test as select * from read_json_auto('{DATA_DIR}/json/10751.json', format = 'newline_delimited', ignore_errors=true);
 
 statement ok
 select * from json_test;
