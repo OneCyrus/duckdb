@@ -595,10 +595,18 @@ static void MergeNodeObject(JSONStructureNode &merged, const JSONStructureDescri
 	auto &merged_desc = merged.GetOrCreateDescription(LogicalTypeId::STRUCT);
 	for (auto &struct_child : child_desc.children) {
 		const auto &struct_child_key = *struct_child.key;
-		// Use case-insensitive lookup when merging: if the task node has "Retention" but the merged
-		// node already has "retention" (from a different task), merge into the existing child rather
-		// than creating a duplicate with a different case spelling.
+		// Use case-insensitive lookup when merging: if the source has "Retention" but the merged
+		// node already has "retention" (from a different chunk/thread), merge into the existing child
+		// rather than creating a duplicate with a different case spelling.
+		// However, if the CI-matching key also exists as a separate child in child_desc, the two keys
+		// are distinct fields from the same record (e.g. "id" and "Id") and must remain separate.
 		auto *ci_child = merged_desc.FindChildCI(struct_child_key.c_str(), struct_child_key.length());
+		if (ci_child) {
+			const JSONKey ci_key {ci_child->key->c_str(), ci_child->key->length()};
+			if (child_desc.key_map.count(ci_key) > 0) {
+				ci_child = nullptr; // CI match is also a distinct key in child_desc: keep them separate
+			}
+		}
 		auto &merged_child =
 		    ci_child ? *ci_child : merged_desc.GetOrCreateChild(struct_child_key.c_str(), struct_child_key.length());
 		JSONStructure::MergeNodes(merged_child, struct_child);
