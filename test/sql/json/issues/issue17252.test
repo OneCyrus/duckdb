@@ -2,6 +2,8 @@
 # description: Case-insensitive field collisions create suffixed columns by default and can be merged with case_insensitive_field_matching
 # group: [issues]
 
+require json
+
 statement ok
 CREATE TABLE json_issue_17252(line VARCHAR);
 
