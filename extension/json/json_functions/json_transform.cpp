@@ -1,4 +1,5 @@
 #include "json_transform.hpp"
+#include "duckdb/common/string_util.hpp"
 
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
@@ -374,10 +375,14 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 
 	// Build hash map from key to column index so we don't have to linearly search using the key
 	json_key_map_t<idx_t> key_map;
+	case_insensitive_map_t<idx_t> case_insensitive_key_map;
 	vector<yyjson_val **> nested_vals;
 	nested_vals.reserve(column_count);
 	for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
 		key_map.insert({{names[col_idx].c_str(), names[col_idx].length()}, col_idx});
+		if (options.case_insensitive_field_matching) {
+			case_insensitive_key_map.insert({names[col_idx], col_idx});
+		}
 		nested_vals.push_back(JSONCommon::AllocateArray<yyjson_val *>(alc, count));
 	}
 
@@ -419,8 +424,17 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 			auto key_ptr = unsafe_yyjson_get_str(key);
 			auto key_len = unsafe_yyjson_get_len(key);
 			auto it = key_map.find({key_ptr, key_len});
+			optional_idx column_idx;
 			if (it != key_map.end()) {
-				const auto &col_idx = it->second;
+				column_idx = it->second;
+			} else if (options.case_insensitive_field_matching) {
+				auto ci_it = case_insensitive_key_map.find(string(key_ptr, key_len));
+				if (ci_it != case_insensitive_key_map.end()) {
+					column_idx = ci_it->second;
+				}
+			}
+			if (column_idx.IsValid()) {
+				const auto &col_idx = column_idx.GetIndex();
 				if (found_keys[col_idx]) {
 					if (success && options.error_duplicate_key) {
 						options.error_message =

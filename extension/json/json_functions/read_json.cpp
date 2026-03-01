@@ -9,30 +9,37 @@
 
 namespace duckdb {
 
-static inline LogicalType RemoveDuplicateStructKeys(const LogicalType &type, const bool ignore_errors) {
+static inline LogicalType RemoveDuplicateStructKeys(const LogicalType &type, const bool merge_duplicate_fields) {
 	switch (type.id()) {
 	case LogicalTypeId::STRUCT: {
-		case_insensitive_set_t child_names;
+		case_insensitive_map_t<idx_t> child_names;
+		case_insensitive_map_t<idx_t> name_collision_count;
 		child_list_t<LogicalType> child_types;
 		for (auto &child_type : StructType::GetChildTypes(type)) {
-			auto insert_success = child_names.insert(child_type.first).second;
-			if (!insert_success) {
-				if (ignore_errors) {
+			auto child_name = child_type.first;
+			auto transformed_type = RemoveDuplicateStructKeys(child_type.second, merge_duplicate_fields);
+			auto existing = child_names.find(child_name);
+			if (existing != child_names.end()) {
+				if (merge_duplicate_fields) {
+					auto &target_type = child_types[existing->second].second;
+					target_type = LogicalType::ForceMaxLogicalType(target_type, transformed_type);
 					continue;
 				}
-				throw NotImplementedException(
-				    "Duplicate name \"%s\" in struct auto-detected in JSON, try ignore_errors=true", child_type.first);
-			} else {
-				child_types.emplace_back(child_type.first, RemoveDuplicateStructKeys(child_type.second, ignore_errors));
+				while (child_names.find(child_name) != child_names.end()) {
+					name_collision_count[child_name] += 1;
+					child_name = child_name + "_" + to_string(name_collision_count[child_name]);
+				}
 			}
+			child_names[child_name] = child_types.size();
+			child_types.emplace_back(child_name, std::move(transformed_type));
 		}
 		return LogicalType::STRUCT(child_types);
 	}
 	case LogicalTypeId::MAP:
-		return LogicalType::MAP(RemoveDuplicateStructKeys(MapType::KeyType(type), ignore_errors),
-		                        RemoveDuplicateStructKeys(MapType::ValueType(type), ignore_errors));
+		return LogicalType::MAP(RemoveDuplicateStructKeys(MapType::KeyType(type), merge_duplicate_fields),
+		                        RemoveDuplicateStructKeys(MapType::ValueType(type), merge_duplicate_fields));
 	case LogicalTypeId::LIST:
-		return LogicalType::LIST(RemoveDuplicateStructKeys(ListType::GetChildType(type), ignore_errors));
+		return LogicalType::LIST(RemoveDuplicateStructKeys(ListType::GetChildType(type), merge_duplicate_fields));
 	default:
 		return type;
 	}
@@ -217,7 +224,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 			return_types.reserve(child_types.size());
 			names.reserve(child_types.size());
 			for (auto &child_type : child_types) {
-				return_types.emplace_back(RemoveDuplicateStructKeys(child_type.second, options.ignore_errors));
+				return_types.emplace_back(RemoveDuplicateStructKeys(child_type.second, options.merge_duplicate_fields));
 				names.emplace_back(child_type.first);
 			}
 		} else {
@@ -226,7 +233,8 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 		}
 	} else {
 		D_ASSERT(json_data.options.record_type == JSONRecordType::VALUES);
-		return_types.emplace_back(RemoveDuplicateStructKeys(type, options.ignore_errors));
+		return_types.emplace_back(
+		    RemoveDuplicateStructKeys(type, options.merge_duplicate_fields));
 		names.emplace_back("json");
 	}
 }
@@ -258,6 +266,7 @@ TableFunctionSet CreateJSONFunctionInfo(string name, shared_ptr<JSONScanInfo> in
 	table_function.named_parameters["field_appearance_threshold"] = LogicalType::DOUBLE;
 	table_function.named_parameters["convert_strings_to_integers"] = LogicalType::BOOLEAN;
 	table_function.named_parameters["map_inference_threshold"] = LogicalType::BIGINT;
+	table_function.named_parameters["merge_duplicate_fields"] = LogicalType::BOOLEAN;
 	return MultiFileReader::CreateFunctionSet(table_function);
 }
 

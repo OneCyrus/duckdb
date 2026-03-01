@@ -117,6 +117,8 @@ struct JSONReaderOptions {
 	//! If a struct contains more fields than this threshold with at least 80% similar types,
 	//! we infer it as MAP type
 	idx_t map_inference_threshold = 200;
+	//! If duplicate fields only differ in casing (e.g. "id" and "Id"), merge them into one field
+	bool merge_duplicate_fields = false;
 	//! User-provided list of names (in order)
 	vector<string> name_list;
 	//! User-provided list of types (in order)
