@@ -263,7 +263,7 @@ bool JSONMultiFileInfo::ParseCopyOption(ClientContext &context, const string &ke
 	if (loption == "case_insensitive_field_matching") {
 		JSONCheckSingleParameter(key, values);
 		options.case_insensitive_field_matching =
-		    values.empty() ? false : BooleanValue::Get(values.back().DefaultCastAs(LogicalType::BOOLEAN));
+		    BooleanValue::Get(values.back().DefaultCastAs(LogicalTypeId::BOOLEAN));
 		return true;
 	}
 	return false;
