@@ -118,7 +118,7 @@ struct JSONReaderOptions {
 	//! we infer it as MAP type
 	idx_t map_inference_threshold = 200;
 	//! If duplicate fields only differ in casing (e.g. "id" and "Id"), merge them into one field
-	bool merge_duplicate_fields = false;
+	bool case_insensitive_field_matching = false;
 	//! User-provided list of names (in order)
 	vector<string> name_list;
 	//! User-provided list of types (in order)

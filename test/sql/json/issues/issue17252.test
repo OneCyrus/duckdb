@@ -1,5 +1,5 @@
 # name: test/sql/json/issues/issue17252.test
-# description: Case-insensitive field collisions create suffixed columns by default and can be merged with merge_duplicate_fields
+# description: Case-insensitive field collisions create suffixed columns by default and can be merged with case_insensitive_field_matching
 # group: [issues]
 
 statement ok
@@ -13,7 +13,7 @@ INSERT INTO json_issue_17252 VALUES
 statement ok
 COPY json_issue_17252 TO '__TEST_DIR__/issue17252.ndjson' (FORMAT csv, HEADER false, QUOTE '', ESCAPE '');
 
-# Default behavior (merge_duplicate_fields=false): case-insensitive collisions are suffixed
+# Default behavior (case_insensitive_field_matching=false): case-insensitive collisions are suffixed
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson'))
@@ -31,10 +31,10 @@ ORDER BY COALESCE(id, id_1);
 1	NULL	10	NULL
 NULL	2	NULL	20
 
-# merge_duplicate_fields=true: root and nested case-collisions are merged into one name
+# case_insensitive_field_matching=true: root and nested case-collisions are merged into one name
 query TT
 SELECT column_name, column_type
-FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson', merge_duplicate_fields = true))
+FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson', case_insensitive_field_matching = true))
 ORDER BY column_name;
 ----
 id	BIGINT
@@ -42,7 +42,7 @@ obj	STRUCT(x BIGINT)
 
 query II
 SELECT id, obj.x
-FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson', merge_duplicate_fields = true)
+FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson', case_insensitive_field_matching = true)
 ORDER BY id;
 ----
 1	10
