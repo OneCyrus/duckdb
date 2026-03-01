@@ -233,8 +233,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 		}
 	} else {
 		D_ASSERT(json_data.options.record_type == JSONRecordType::VALUES);
-		return_types.emplace_back(
-		    RemoveDuplicateStructKeys(type, options.merge_duplicate_fields));
+		return_types.emplace_back(RemoveDuplicateStructKeys(type, options.merge_duplicate_fields));
 		names.emplace_back("json");
 	}
 }

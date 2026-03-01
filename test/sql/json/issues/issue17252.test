@@ -1,5 +1,6 @@
 # name: test/sql/json/issues/issue17252.test
 # description: Case-insensitive field collisions create suffixed columns by default and can be merged with merge_duplicate_fields
+# group: [issues]
 
 statement ok
 CREATE TABLE json_issue_17252(line VARCHAR);
