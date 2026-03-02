@@ -200,6 +200,10 @@ bool JSONMultiFileInfo::ParseOption(ClientContext &context, const string &key, c
 		options.convert_strings_to_integers = BooleanValue::Get(value);
 		return true;
 	}
+	if (loption == "case_insensitive_field_matching") {
+		options.case_insensitive_field_matching = BooleanValue::Get(value);
+		return true;
+	}
 	return false;
 }
 
@@ -254,6 +258,12 @@ bool JSONMultiFileInfo::ParseCopyOption(ClientContext &context, const string &ke
 				options.format = JSONFormat::NEWLINE_DELIMITED;
 			}
 		}
+		return true;
+	}
+	if (loption == "case_insensitive_field_matching") {
+		JSONCheckSingleParameter(key, values);
+		options.case_insensitive_field_matching =
+		    BooleanValue::Get(values.back().DefaultCastAs(LogicalTypeId::BOOLEAN));
 		return true;
 	}
 	return false;
@@ -315,8 +325,9 @@ void JSONMultiFileInfo::BindReader(ClientContext &context, vector<LogicalType> &
 	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;
+	transform_options.case_insensitive_field_matching = options.case_insensitive_field_matching;
 
-	if (options.auto_detect) {
+	if (options.auto_detect && !options.case_insensitive_field_matching) {
 		// JSON may contain columns such as "id" and "Id", which are duplicates for us due to case-insensitivity
 		// We rename them so we can parse the file anyway. Note that we can't change json_data.key_names,
 		// because the JSON reader gets columns by exact name, not position
