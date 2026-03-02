@@ -9,8 +9,7 @@
 
 namespace duckdb {
 
-static inline LogicalType RemoveDuplicateStructKeys(const LogicalType &type,
-                                                    const bool case_insensitive_field_matching) {
+static inline LogicalType RemoveDuplicateStructKeys(const LogicalType &type, bool case_insensitive_field_matching) {
 	switch (type.id()) {
 	case LogicalTypeId::STRUCT: {
 		case_insensitive_map_t<idx_t> child_names;
