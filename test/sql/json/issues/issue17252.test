@@ -19,7 +19,7 @@ COPY json_issue_17252 TO '__TEST_DIR__/issue17252.ndjson' (FORMAT csv, HEADER fa
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson'))
-ORDER BY column_name;
+ORDER BY lower(column_name), column_name;
 ----
 Id_1	BIGINT
 id	BIGINT
@@ -37,7 +37,7 @@ NULL	2	NULL	20
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson', case_insensitive_field_matching = true))
-ORDER BY column_name;
+ORDER BY lower(column_name), column_name;
 ----
 id	BIGINT
 obj	STRUCT(x BIGINT)
@@ -66,7 +66,7 @@ COPY json_issue_17252_root TO '__TEST_DIR__/issue17252_root.ndjson' (FORMAT csv,
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252_root.ndjson'))
-ORDER BY column_name;
+ORDER BY lower(column_name), column_name;
 ----
 Id_1	BIGINT
 id	BIGINT
@@ -84,7 +84,7 @@ NULL	22	200
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252_root.ndjson', case_insensitive_field_matching = true))
-ORDER BY column_name;
+ORDER BY lower(column_name), column_name;
 ----
 id	BIGINT
 v	BIGINT
@@ -125,7 +125,7 @@ COPY json_issue_17252_multi_b TO '__TEST_DIR__/issue17252_multi_b.ndjson' (FORMA
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', '__TEST_DIR__/issue17252_multi_b.ndjson']))
-ORDER BY column_name;
+ORDER BY lower(column_name), column_name;
 ----
 Id_1	BIGINT
 id	BIGINT
@@ -141,7 +141,7 @@ FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', '__TEST_DIR__/i
 query TT
 SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', '__TEST_DIR__/issue17252_multi_b.ndjson'], case_insensitive_field_matching = true))
-ORDER BY column_name;
+ORDER BY lower(column_name), column_name;
 ----
 id	BIGINT
 obj	STRUCT(x BIGINT)
