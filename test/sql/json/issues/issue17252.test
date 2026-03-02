@@ -17,13 +17,13 @@ COPY json_issue_17252 TO '__TEST_DIR__/issue17252.ndjson' (FORMAT csv, HEADER fa
 
 # Default behavior (case_insensitive_field_matching=false): case-insensitive collisions are suffixed
 query TT
-SELECT lower(column_name), lower(column_type)
+SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson'))
 ORDER BY lower(column_name), column_name;
 ----
-id	bigint
-id_1	bigint
-obj	struct(x bigint, x_1 bigint)
+id	BIGINT
+id_1	BIGINT
+obj	STRUCT(x BIGINT, x_1 BIGINT)
 
 query IIII
 SELECT id, id_1, obj.x, obj.x_1
@@ -35,12 +35,12 @@ NULL	2	NULL	20
 
 # case_insensitive_field_matching=true: root and nested case-collisions are merged into one name
 query TT
-SELECT lower(column_name), lower(column_type)
+SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson', case_insensitive_field_matching = true))
 ORDER BY lower(column_name), column_name;
 ----
-id	bigint
-obj	struct(x bigint)
+id	BIGINT
+obj	STRUCT(x BIGINT)
 
 query II
 SELECT id, obj.x
@@ -64,13 +64,13 @@ COPY json_issue_17252_root TO '__TEST_DIR__/issue17252_root.ndjson' (FORMAT csv,
 
 # Default: root collision is split into suffixed columns
 query TT
-SELECT lower(column_name), lower(column_type)
+SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252_root.ndjson'))
 ORDER BY lower(column_name), column_name;
 ----
-id	bigint
-id_1	bigint
-v	bigint
+id	BIGINT
+id_1	BIGINT
+v	BIGINT
 
 query III
 SELECT id, id_1, v
@@ -82,12 +82,12 @@ NULL	22	200
 
 # Enabled: root collision is merged into one column
 query TT
-SELECT lower(column_name), lower(column_type)
+SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252_root.ndjson', case_insensitive_field_matching = true))
 ORDER BY lower(column_name), column_name;
 ----
-id	bigint
-v	bigint
+id	BIGINT
+v	BIGINT
 
 query II
 SELECT id, v
@@ -123,13 +123,13 @@ COPY json_issue_17252_multi_b TO '__TEST_DIR__/issue17252_multi_b.ndjson' (FORMA
 
 # Default multi-file behavior: root+nested collisions are suffixed
 query TT
-SELECT lower(column_name), lower(column_type)
+SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', '__TEST_DIR__/issue17252_multi_b.ndjson']))
 ORDER BY lower(column_name), column_name;
 ----
-id	bigint
-id_1	bigint
-obj	struct(x bigint, x_1 bigint)
+id	BIGINT
+id_1	BIGINT
+obj	STRUCT(x BIGINT, x_1 BIGINT)
 
 query IIIII
 SELECT count(*), count(id), count(id_1), count(obj.x), count(obj.x_1)
@@ -139,12 +139,12 @@ FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', '__TEST_DIR__/i
 
 # Enabled multi-file behavior: root+nested collisions are merged
 query TT
-SELECT lower(column_name), lower(column_type)
+SELECT column_name, column_type
 FROM (DESCRIBE FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', '__TEST_DIR__/issue17252_multi_b.ndjson'], case_insensitive_field_matching = true))
 ORDER BY lower(column_name), column_name;
 ----
-id	bigint
-obj	struct(x bigint)
+id	BIGINT
+obj	STRUCT(x BIGINT)
 
 query III
 SELECT count(*), count(id), count(obj.x)
