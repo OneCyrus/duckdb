@@ -22,8 +22,8 @@ FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252.ndjson'))
 ORDER BY lower(column_name), column_name;
 ----
 id	BIGINT
-id_1	BIGINT
-obj	STRUCT(x BIGINT, x_1 BIGINT)
+Id_1	BIGINT
+obj	STRUCT(x BIGINT, X_1 BIGINT)
 
 query IIII
 SELECT id, id_1, obj.x, obj.x_1
@@ -69,7 +69,7 @@ FROM (DESCRIBE FROM read_ndjson_auto('__TEST_DIR__/issue17252_root.ndjson'))
 ORDER BY lower(column_name), column_name;
 ----
 id	BIGINT
-id_1	BIGINT
+Id_1	BIGINT
 v	BIGINT
 
 query III
@@ -128,8 +128,8 @@ FROM (DESCRIBE FROM read_ndjson_auto(['__TEST_DIR__/issue17252_multi_a.ndjson', 
 ORDER BY lower(column_name), column_name;
 ----
 id	BIGINT
-id_1	BIGINT
-obj	STRUCT(x BIGINT, x_1 BIGINT)
+Id_1	BIGINT
+obj	STRUCT(x BIGINT, X_1 BIGINT)
 
 query IIIII
 SELECT count(*), count(id), count(id_1), count(obj.x), count(obj.x_1)
