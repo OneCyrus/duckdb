@@ -361,6 +361,21 @@ static bool TransformToString(yyjson_val *vals[], yyjson_alc *alc, Vector &resul
 	return true;
 }
 
+static bool TryStripGeneratedSuffix(const string &name, string &base_name) {
+	if (name.size() < 3) {
+		return false;
+	}
+	idx_t split = name.size();
+	while (split > 0 && StringUtil::CharacterIsDigit(name[split - 1])) {
+		split--;
+	}
+	if (split == name.size() || split <= 1 || name[split - 1] != '_') {
+		return false;
+	}
+	base_name = name.substr(0, split - 1);
+	return !base_name.empty();
+}
+
 bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, const idx_t count,
                                     const vector<string> &names, const vector<Vector *> &result_vectors,
                                     JSONTransformOptions &options,
@@ -376,6 +391,8 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 	// Build hash map from key to column index so we don't have to linearly search using the key
 	json_key_map_t<idx_t> key_map;
 	case_insensitive_map_t<idx_t> case_insensitive_key_map;
+	case_insensitive_set_t all_field_names;
+	unordered_map<string, idx_t> generated_name_alias_map;
 	vector<yyjson_val **> nested_vals;
 	nested_vals.reserve(column_count);
 	for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
@@ -383,7 +400,22 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 		if (options.case_insensitive_field_matching) {
 			case_insensitive_key_map.insert({names[col_idx], col_idx});
 		}
+		all_field_names.insert(names[col_idx]);
 		nested_vals.push_back(JSONCommon::AllocateArray<yyjson_val *>(alc, count));
+	}
+	if (!options.case_insensitive_field_matching) {
+		for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
+			string base_name;
+			if (!TryStripGeneratedSuffix(names[col_idx], base_name)) {
+				continue;
+			}
+			if (key_map.find({base_name.c_str(), base_name.length()}) != key_map.end()) {
+				continue;
+			}
+			if (all_field_names.find(base_name) != all_field_names.end()) {
+				generated_name_alias_map.emplace(base_name, col_idx);
+			}
+		}
 	}
 
 	idx_t found_key_count;
@@ -423,12 +455,19 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 		yyjson_obj_foreach(objects[i], idx, max, key, val) {
 			auto key_ptr = unsafe_yyjson_get_str(key);
 			auto key_len = unsafe_yyjson_get_len(key);
+			string key_str(key_ptr, key_len);
+
 			auto it = key_map.find({key_ptr, key_len});
 			optional_idx column_idx;
 			if (it != key_map.end()) {
 				column_idx = it->second;
+			} else if (!options.case_insensitive_field_matching) {
+				auto alias_it = generated_name_alias_map.find(key_str);
+				if (alias_it != generated_name_alias_map.end()) {
+					column_idx = alias_it->second;
+				}
 			} else if (options.case_insensitive_field_matching) {
-				auto ci_it = case_insensitive_key_map.find(string(key_ptr, key_len));
+				auto ci_it = case_insensitive_key_map.find(key_str);
 				if (ci_it != case_insensitive_key_map.end()) {
 					column_idx = ci_it->second;
 				}
@@ -439,7 +478,7 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 					if (success && options.error_duplicate_key) {
 						options.error_message =
 						    StringUtil::Format("Object %s has duplicate key \"%s\"",
-						                       JSONCommon::ValToString(objects[i], 50), string(key_ptr, key_len));
+						                       JSONCommon::ValToString(objects[i], 50), key_str);
 						options.object_index = i;
 						success = false;
 					}
@@ -450,8 +489,7 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 				}
 			} else if (success && error_unknown_key && options.error_unknown_key) {
 				options.error_message =
-				    StringUtil::Format("Object %s has unknown key \"%s\"", JSONCommon::ValToString(objects[i], 50),
-				                       string(key_ptr, key_len));
+				    StringUtil::Format("Object %s has unknown key \"%s\"", JSONCommon::ValToString(objects[i], 50), key_str);
 				options.object_index = i;
 				success = false;
 			}

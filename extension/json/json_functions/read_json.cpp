@@ -202,7 +202,8 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 
 	// Convert structure to logical type
 	auto type = JSONStructure::StructureToType(context, node, options.max_depth, options.field_appearance_threshold,
-	                                           options.map_inference_threshold);
+	                                           options.map_inference_threshold,
+	                                           options.case_insensitive_field_matching);
 
 	// Auto-detect record type
 	if (json_data.options.record_type == JSONRecordType::AUTO_DETECT) {
