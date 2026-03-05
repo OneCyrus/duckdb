@@ -36,6 +36,8 @@ public:
 
 	//! Whether to delay the error when transforming (e.g., when non-strict casting or reading from file)
 	bool delay_error = false;
+	//! Match object keys against struct fields case-insensitively
+	bool case_insensitive_field_matching = false;
 	//! Date format used for parsing (can be NULL)
 	optional_ptr<const DateFormatMap> date_format_map = nullptr;
 	//! String to store errors in

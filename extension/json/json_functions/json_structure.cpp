@@ -539,14 +539,15 @@ ScalarFunctionSet JSONFunctions::GetStructureFunction() {
 
 static LogicalType StructureToTypeArray(ClientContext &context, const JSONStructureNode &node, const idx_t max_depth,
                                         const double field_appearance_threshold, const idx_t map_inference_threshold,
-                                        const idx_t depth, const LogicalType &null_type) {
+                                        const bool case_insensitive_field_matching, const idx_t depth,
+                                        const LogicalType &null_type) {
 	D_ASSERT(node.descriptions.size() == 1 && node.descriptions[0].type == LogicalTypeId::LIST);
 	const auto &desc = node.descriptions[0];
 	D_ASSERT(desc.children.size() == 1);
 
 	return LogicalType::LIST(JSONStructure::StructureToType(context, desc.children[0], max_depth,
 	                                                        field_appearance_threshold, map_inference_threshold,
-	                                                        depth + 1, null_type));
+	                                                        case_insensitive_field_matching, depth + 1, null_type));
 }
 
 static void MergeNodeArray(JSONStructureNode &merged, const JSONStructureDescription &child_desc) {
@@ -711,7 +712,8 @@ static bool IsStructureInconsistent(const JSONStructureDescription &desc, const 
 
 static LogicalType GetMergedType(ClientContext &context, const JSONStructureNode &node, const idx_t max_depth,
                                  const double field_appearance_threshold, const idx_t map_inference_threshold,
-                                 const idx_t depth, const LogicalType &null_type) {
+                                 const bool case_insensitive_field_matching, const idx_t depth,
+                                 const LogicalType &null_type) {
 	D_ASSERT(node.descriptions.size() == 1);
 	auto &desc = node.descriptions[0];
 	JSONStructureNode merged;
@@ -719,12 +721,43 @@ static LogicalType GetMergedType(ClientContext &context, const JSONStructureNode
 		JSONStructure::MergeNodes(merged, child);
 	}
 	return JSONStructure::StructureToType(context, merged, max_depth, field_appearance_threshold,
-	                                      map_inference_threshold, depth + 1, null_type);
+	                                      map_inference_threshold, case_insensitive_field_matching, depth + 1,
+	                                      null_type);
+}
+
+static child_list_t<LogicalType> ResolveStructNameCollisions(child_list_t<LogicalType> child_types,
+                                                              const bool case_insensitive_field_matching) {
+	case_insensitive_map_t<idx_t> child_names;
+	case_insensitive_map_t<idx_t> name_collision_count;
+	child_list_t<LogicalType> resolved_types;
+	resolved_types.reserve(child_types.size());
+
+	for (auto &child_type : child_types) {
+		auto child_name = child_type.first;
+		auto child_logical_type = std::move(child_type.second);
+		auto existing = child_names.find(child_name);
+		if (existing != child_names.end()) {
+			if (case_insensitive_field_matching) {
+				auto &target_type = resolved_types[existing->second].second;
+				target_type = LogicalType::ForceMaxLogicalType(target_type, child_logical_type);
+				continue;
+			}
+			while (child_names.find(child_name) != child_names.end()) {
+				name_collision_count[child_name] += 1;
+				child_name = child_name + "_" + to_string(name_collision_count[child_name]);
+			}
+		}
+
+		child_names[child_name] = resolved_types.size();
+		resolved_types.emplace_back(std::move(child_name), std::move(child_logical_type));
+	}
+	return resolved_types;
 }
 
 static LogicalType StructureToTypeObject(ClientContext &context, const JSONStructureNode &node, const idx_t max_depth,
                                          const double field_appearance_threshold, const idx_t map_inference_threshold,
-                                         const idx_t depth, const LogicalType &null_type) {
+                                         const bool case_insensitive_field_matching, const idx_t depth,
+                                         const LogicalType &null_type) {
 	D_ASSERT(node.descriptions.size() == 1 && node.descriptions[0].type == LogicalTypeId::STRUCT);
 	auto &desc = node.descriptions[0];
 
@@ -742,7 +775,8 @@ static LogicalType StructureToTypeObject(ClientContext &context, const JSONStruc
 	    IsStructureInconsistent(desc, node.count, node.null_count, field_appearance_threshold)) {
 		return LogicalType::MAP(LogicalType::VARCHAR,
 		                        GetMergedType(context, node, max_depth, field_appearance_threshold,
-		                                      map_inference_threshold, depth + 1, null_type));
+		                                      map_inference_threshold, case_insensitive_field_matching, depth + 1,
+		                                      null_type));
 	}
 
 	// We have a consistent object
@@ -752,13 +786,16 @@ static LogicalType StructureToTypeObject(ClientContext &context, const JSONStruc
 		D_ASSERT(child.key);
 		child_types.emplace_back(*child.key,
 		                         JSONStructure::StructureToType(context, child, max_depth, field_appearance_threshold,
-		                                                        map_inference_threshold, depth + 1, null_type));
+		                                                        map_inference_threshold,
+		                                                        case_insensitive_field_matching, depth + 1, null_type));
 	}
+	child_types = ResolveStructNameCollisions(std::move(child_types), case_insensitive_field_matching);
 
 	// If we have many children and all children have similar-enough types we infer map
 	if (desc.children.size() >= map_inference_threshold) {
 		LogicalType map_value_type = GetMergedType(context, node, max_depth, field_appearance_threshold,
-		                                           map_inference_threshold, depth + 1, LogicalTypeId::SQLNULL);
+		                                           map_inference_threshold, case_insensitive_field_matching, depth + 1,
+		                                           LogicalTypeId::SQLNULL);
 
 		double total_similarity = 0;
 		for (const auto &child_type : child_types) {
@@ -773,7 +810,8 @@ static LogicalType StructureToTypeObject(ClientContext &context, const JSONStruc
 		if (avg_similarity >= 0.8) {
 			if (null_type != LogicalTypeId::SQLNULL) {
 				map_value_type = GetMergedType(context, node, max_depth, field_appearance_threshold,
-				                               map_inference_threshold, depth + 1, null_type);
+				                               map_inference_threshold, case_insensitive_field_matching, depth + 1,
+				                               null_type);
 			}
 			return LogicalType::MAP(LogicalType::VARCHAR, map_value_type);
 		}
@@ -793,7 +831,8 @@ static LogicalType StructureToTypeString(const JSONStructureNode &node) {
 
 LogicalType JSONStructure::StructureToType(ClientContext &context, const JSONStructureNode &node, const idx_t max_depth,
                                            const double field_appearance_threshold, const idx_t map_inference_threshold,
-                                           const idx_t depth, const LogicalType &null_type) {
+                                           const bool case_insensitive_field_matching, const idx_t depth,
+                                           const LogicalType &null_type) {
 	if (depth >= max_depth) {
 		return LogicalType::JSON();
 	}
@@ -808,10 +847,10 @@ LogicalType JSONStructure::StructureToType(ClientContext &context, const JSONStr
 	switch (desc.type) {
 	case LogicalTypeId::LIST:
 		return StructureToTypeArray(context, node, max_depth, field_appearance_threshold, map_inference_threshold,
-		                            depth, null_type);
+		                            case_insensitive_field_matching, depth, null_type);
 	case LogicalTypeId::STRUCT:
 		return StructureToTypeObject(context, node, max_depth, field_appearance_threshold, map_inference_threshold,
-		                             depth, null_type);
+		                             case_insensitive_field_matching, depth, null_type);
 	case LogicalTypeId::VARCHAR:
 		return StructureToTypeString(node);
 	case LogicalTypeId::UBIGINT:
