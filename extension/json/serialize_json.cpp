@@ -14,7 +14,9 @@ void JSONTransformOptions::Serialize(Serializer &serializer) const {
 	serializer.WritePropertyWithDefault<bool>(101, "error_duplicate_key", error_duplicate_key);
 	serializer.WritePropertyWithDefault<bool>(102, "error_missing_key", error_missing_key);
 	serializer.WritePropertyWithDefault<bool>(103, "error_unknown_key", error_unknown_key);
-	serializer.WritePropertyWithDefault<bool>(104, "delay_error", delay_error);
+	serializer.WritePropertyWithDefault<bool>(104, "merge_case_insensitive_keys", merge_case_insensitive_keys);
+	serializer.WritePropertyWithDefault<bool>(105, "auto_rename_case_insensitive_keys", auto_rename_case_insensitive_keys);
+	serializer.WritePropertyWithDefault<bool>(106, "delay_error", delay_error);
 }
 
 JSONTransformOptions JSONTransformOptions::Deserialize(Deserializer &deserializer) {
@@ -23,7 +25,9 @@ JSONTransformOptions JSONTransformOptions::Deserialize(Deserializer &deserialize
 	deserializer.ReadPropertyWithDefault<bool>(101, "error_duplicate_key", result.error_duplicate_key);
 	deserializer.ReadPropertyWithDefault<bool>(102, "error_missing_key", result.error_missing_key);
 	deserializer.ReadPropertyWithDefault<bool>(103, "error_unknown_key", result.error_unknown_key);
-	deserializer.ReadPropertyWithDefault<bool>(104, "delay_error", result.delay_error);
+	deserializer.ReadPropertyWithDefault<bool>(104, "merge_case_insensitive_keys", result.merge_case_insensitive_keys);
+	deserializer.ReadPropertyWithDefault<bool>(105, "auto_rename_case_insensitive_keys", result.auto_rename_case_insensitive_keys);
+	deserializer.ReadPropertyWithDefault<bool>(106, "delay_error", result.delay_error);
 	return result;
 }
 

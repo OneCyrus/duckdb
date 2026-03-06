@@ -25,6 +25,22 @@ JSONTransformOptions::JSONTransformOptions(bool strict_cast_p, bool error_duplic
 //! Forward declaration for recursion
 static LogicalType StructureStringToType(yyjson_val *val, ClientContext &context);
 
+
+static bool MatchAutoRenamedKey(const JSONKey &candidate, const char *key_ptr, const idx_t key_len) {
+	if (candidate.len <= key_len + 2) {
+		return false;
+	}
+	if (FastMemcmp(candidate.ptr, key_ptr, key_len) != 0 || candidate.ptr[key_len] != '_') {
+		return false;
+	}
+	for (idx_t i = key_len + 1; i < candidate.len; i++) {
+		if (!StringUtil::CharacterIsDigit(candidate.ptr[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
 static LogicalType StructureStringToTypeArray(yyjson_val *arr, ClientContext &context) {
 	if (yyjson_arr_size(arr) != 1) {
 		throw BinderException("Too many values in array of JSON structure");
@@ -419,6 +435,22 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 			auto key_ptr = unsafe_yyjson_get_str(key);
 			auto key_len = unsafe_yyjson_get_len(key);
 			auto it = key_map.find({key_ptr, key_len});
+			if (it == key_map.end() && options.merge_case_insensitive_keys) {
+				for (const auto &entry : key_map) {
+					if (StringUtil::CIEquals(entry.first.ptr, entry.first.len, key_ptr, key_len)) {
+						it = key_map.find(entry.first);
+						break;
+					}
+				}
+			}
+			if (it == key_map.end() && options.auto_rename_case_insensitive_keys) {
+				for (const auto &entry : key_map) {
+					if (MatchAutoRenamedKey(entry.first, key_ptr, key_len)) {
+						it = key_map.find(entry.first);
+						break;
+					}
+				}
+			}
 			if (it != key_map.end()) {
 				const auto &col_idx = it->second;
 				if (found_keys[col_idx]) {

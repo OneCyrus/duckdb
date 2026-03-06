@@ -1,0 +1,2 @@
+{"root": 1, "nested": {"foo": 1}}
+{"Root": "x", "nested": {"Foo": "y"}}
