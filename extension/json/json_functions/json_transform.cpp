@@ -374,10 +374,36 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 
 	// Build hash map from key to column index so we don't have to linearly search using the key
 	json_key_map_t<idx_t> key_map;
+	json_key_map_t<idx_t> auto_rename_key_map;
+	vector<string> auto_rename_original_names;
+	auto_rename_original_names.reserve(column_count);
+	case_insensitive_map_t<idx_t> seen_names;
 	vector<yyjson_val **> nested_vals;
 	nested_vals.reserve(column_count);
 	for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
-		key_map.insert({{names[col_idx].c_str(), names[col_idx].length()}, col_idx});
+		const auto &generated_name = names[col_idx];
+		key_map.insert({{generated_name.c_str(), generated_name.length()}, col_idx});
+		if (options.auto_rename_case_insensitive_keys) {
+			auto underscore_pos = generated_name.rfind('_');
+			if (underscore_pos != string::npos && underscore_pos + 1 < generated_name.size()) {
+				bool all_digits = true;
+				for (idx_t i = underscore_pos + 1; i < generated_name.size(); i++) {
+					if (!StringUtil::CharacterIsDigit(generated_name[i])) {
+						all_digits = false;
+						break;
+					}
+				}
+				if (all_digits) {
+					auto original_name = generated_name.substr(0, underscore_pos);
+					if (seen_names.find(original_name) != seen_names.end()) {
+						auto_rename_original_names.push_back(std::move(original_name));
+						const auto &stored_name = auto_rename_original_names.back();
+						auto_rename_key_map.insert({{stored_name.c_str(), stored_name.length()}, col_idx});
+					}
+				}
+			}
+		}
+		seen_names[generated_name] = col_idx;
 		nested_vals.push_back(JSONCommon::AllocateArray<yyjson_val *>(alc, count));
 	}
 
@@ -419,6 +445,17 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 			auto key_ptr = unsafe_yyjson_get_str(key);
 			auto key_len = unsafe_yyjson_get_len(key);
 			auto it = key_map.find({key_ptr, key_len});
+			if (it == key_map.end() && options.merge_case_insensitive_keys) {
+				for (const auto &entry : key_map) {
+					if (StringUtil::CIEquals(entry.first.ptr, entry.first.len, key_ptr, key_len)) {
+						it = key_map.find(entry.first);
+						break;
+					}
+				}
+			}
+			if (it == key_map.end() && options.auto_rename_case_insensitive_keys) {
+				it = auto_rename_key_map.find({key_ptr, key_len});
+			}
 			if (it != key_map.end()) {
 				const auto &col_idx = it->second;
 				if (found_keys[col_idx]) {
