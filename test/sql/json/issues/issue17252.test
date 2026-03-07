@@ -36,7 +36,7 @@ query T
 SELECT lower(column_name)
 FROM (DESCRIBE SELECT *
       FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited',
-                          case_insensitive_column_handling='merge'))
+                          case_insensitive_column_handling=true))
 ORDER BY 1
 ----
 nested
@@ -45,7 +45,7 @@ root
 query TT
 SELECT root, nested.foo
 FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited',
-                    case_insensitive_column_handling='merge')
+                    case_insensitive_column_handling=true)
 ORDER BY ALL
 ----
 1	1
@@ -55,5 +55,3 @@ statement error
 SELECT *
 FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited',
                     case_insensitive_column_handling='wat')
-----
-read_json "case_insensitive_column_handling" parameter must be one of ['auto_rename', 'merge'].

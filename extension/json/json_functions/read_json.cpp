@@ -244,7 +244,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 	if (json_data.options.record_type == JSONRecordType::RECORDS) {
 		if (type.id() == LogicalTypeId::STRUCT) {
 			LogicalType normalized_type;
-			if (options.case_insensitive_column_handling == JSONReaderOptions::CaseInsensitiveColumnHandling::MERGE) {
+			if (options.merge_case_insensitive_columns) {
 				normalized_type = MergeDuplicateStructKeys(type);
 			} else {
 				normalized_type = AutoRenameDuplicateStructKeys(type);
@@ -262,7 +262,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 		}
 	} else {
 		D_ASSERT(json_data.options.record_type == JSONRecordType::VALUES);
-		if (options.case_insensitive_column_handling == JSONReaderOptions::CaseInsensitiveColumnHandling::MERGE) {
+		if (options.merge_case_insensitive_columns) {
 			return_types.emplace_back(MergeDuplicateStructKeys(type));
 		} else {
 			return_types.emplace_back(AutoRenameDuplicateStructKeys(type));
@@ -284,7 +284,7 @@ TableFunction JSONFunctions::GetReadJSONTableFunction(shared_ptr<JSONScanInfo> f
 	table_function.named_parameters["timestamp_format"] = LogicalType::VARCHAR;
 	table_function.named_parameters["records"] = LogicalType::VARCHAR;
 	table_function.named_parameters["maximum_sample_files"] = LogicalType::BIGINT;
-	table_function.named_parameters["case_insensitive_column_handling"] = LogicalType::VARCHAR;
+	table_function.named_parameters["case_insensitive_column_handling"] = LogicalType::BOOLEAN;
 
 	// TODO: might be able to do filter pushdown/prune ?
 	table_function.function_info = std::move(function_info);

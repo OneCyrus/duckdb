@@ -201,15 +201,7 @@ bool JSONMultiFileInfo::ParseOption(ClientContext &context, const string &key, c
 		return true;
 	}
 	if (loption == "case_insensitive_column_handling") {
-		auto arg = StringUtil::Lower(StringValue::Get(value));
-		if (arg == "auto_rename") {
-			options.case_insensitive_column_handling = JSONReaderOptions::CaseInsensitiveColumnHandling::AUTO_RENAME;
-		} else if (arg == "merge") {
-			options.case_insensitive_column_handling = JSONReaderOptions::CaseInsensitiveColumnHandling::MERGE;
-		} else {
-			throw BinderException(
-			    "read_json \"case_insensitive_column_handling\" parameter must be one of ['auto_rename', 'merge'].");
-		}
+		options.merge_case_insensitive_columns = BooleanValue::Get(value);
 		return true;
 	}
 	return false;
@@ -326,14 +318,14 @@ void JSONMultiFileInfo::BindReader(ClientContext &context, vector<LogicalType> &
 	transform_options.error_missing_key = false;
 	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors;
 	transform_options.merge_case_insensitive_keys =
-	    options.case_insensitive_column_handling == JSONReaderOptions::CaseInsensitiveColumnHandling::MERGE;
+	    options.merge_case_insensitive_columns;
 	transform_options.auto_rename_case_insensitive_keys =
-	    options.case_insensitive_column_handling == JSONReaderOptions::CaseInsensitiveColumnHandling::AUTO_RENAME;
+	    !options.merge_case_insensitive_columns;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;
 
 	if (options.auto_detect &&
-	    options.case_insensitive_column_handling == JSONReaderOptions::CaseInsensitiveColumnHandling::AUTO_RENAME) {
+	    !options.merge_case_insensitive_columns) {
 		// JSON may contain columns such as "id" and "Id", which are duplicates for us due to case-insensitivity.
 		// When auto_rename is enabled we suffix colliding names in the projected output.
 		// Note that we can't change json_data.key_names, because the JSON reader gets columns by exact name,

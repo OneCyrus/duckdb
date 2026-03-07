@@ -88,11 +88,6 @@ private:
 };
 
 struct JSONReaderOptions {
-	enum class CaseInsensitiveColumnHandling : uint8_t {
-		AUTO_RENAME,
-		MERGE
-	};
-
 	//! Scan type
 	JSONScanType type = JSONScanType::READ_JSON;
 	//! The format of the JSON
@@ -129,8 +124,8 @@ struct JSONReaderOptions {
 	//! Forced date/timestamp formats
 	string date_format;
 	string timestamp_format;
-	//! How to handle auto-detected columns that only differ in case
-	CaseInsensitiveColumnHandling case_insensitive_column_handling = CaseInsensitiveColumnHandling::AUTO_RENAME;
+	//! Whether to merge auto-detected columns that only differ in case
+	bool merge_case_insensitive_columns = false;
 };
 
 } // namespace duckdb
