@@ -317,15 +317,12 @@ void JSONMultiFileInfo::BindReader(ClientContext &context, vector<LogicalType> &
 	transform_options.error_duplicate_key = !options.ignore_errors;
 	transform_options.error_missing_key = false;
 	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors;
-	transform_options.merge_case_insensitive_keys =
-	    options.merge_case_insensitive_columns;
-	transform_options.auto_rename_case_insensitive_keys =
-	    !options.merge_case_insensitive_columns;
+	transform_options.merge_case_insensitive_keys = options.merge_case_insensitive_columns;
+	transform_options.auto_rename_case_insensitive_keys = !options.merge_case_insensitive_columns;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;
 
-	if (options.auto_detect &&
-	    !options.merge_case_insensitive_columns) {
+	if (options.auto_detect && !options.merge_case_insensitive_columns) {
 		// JSON may contain columns such as "id" and "Id", which are duplicates for us due to case-insensitivity.
 		// When auto_rename is enabled we suffix colliding names in the projected output.
 		// Note that we can't change json_data.key_names, because the JSON reader gets columns by exact name,

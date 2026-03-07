@@ -360,7 +360,6 @@ static bool TransformToString(yyjson_val *vals[], yyjson_alc *alc, Vector &resul
 	return true;
 }
 
-
 bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, const idx_t count,
                                     const vector<string> &names, const vector<Vector *> &result_vectors,
                                     JSONTransformOptions &options,
