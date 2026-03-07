@@ -361,24 +361,6 @@ static bool TransformToString(yyjson_val *vals[], yyjson_alc *alc, Vector &resul
 }
 
 
-static bool IsLikelyAutoRenamedColumn(const string &generated_name, const case_insensitive_set_t &all_names,
-                                      string &original_name) {
-	if (generated_name.empty()) {
-		return false;
-	}
-	auto underscore_pos = generated_name.rfind('_');
-	if (underscore_pos == string::npos || underscore_pos + 1 >= generated_name.size()) {
-		return false;
-	}
-	for (idx_t i = underscore_pos + 1; i < generated_name.size(); i++) {
-		if (!StringUtil::CharacterIsDigit(generated_name[i])) {
-			return false;
-		}
-	}
-	original_name = generated_name.substr(0, underscore_pos);
-	return all_names.find(original_name) != all_names.end();
-}
-
 bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, const idx_t count,
                                     const vector<string> &names, const vector<Vector *> &result_vectors,
                                     JSONTransformOptions &options,
@@ -394,25 +376,35 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 	// Build hash map from key to column index so we don't have to linearly search using the key
 	json_key_map_t<idx_t> key_map;
 	json_key_map_t<idx_t> auto_rename_key_map;
-	case_insensitive_set_t all_names;
 	vector<string> auto_rename_original_names;
 	auto_rename_original_names.reserve(column_count);
-	for (const auto &name : names) {
-		all_names.insert(name);
-	}
+	case_insensitive_map_t<idx_t> seen_names;
 	vector<yyjson_val **> nested_vals;
 	nested_vals.reserve(column_count);
 	for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
 		const auto &generated_name = names[col_idx];
 		key_map.insert({{generated_name.c_str(), generated_name.length()}, col_idx});
 		if (options.auto_rename_case_insensitive_keys) {
-			string original_name;
-			if (IsLikelyAutoRenamedColumn(generated_name, all_names, original_name)) {
-				auto_rename_original_names.push_back(std::move(original_name));
-				const auto &stored_name = auto_rename_original_names.back();
-				auto_rename_key_map.insert({{stored_name.c_str(), stored_name.length()}, col_idx});
+			auto underscore_pos = generated_name.rfind('_');
+			if (underscore_pos != string::npos && underscore_pos + 1 < generated_name.size()) {
+				bool all_digits = true;
+				for (idx_t i = underscore_pos + 1; i < generated_name.size(); i++) {
+					if (!StringUtil::CharacterIsDigit(generated_name[i])) {
+						all_digits = false;
+						break;
+					}
+				}
+				if (all_digits) {
+					auto original_name = generated_name.substr(0, underscore_pos);
+					if (seen_names.find(original_name) != seen_names.end()) {
+						auto_rename_original_names.push_back(std::move(original_name));
+						const auto &stored_name = auto_rename_original_names.back();
+						auto_rename_key_map.insert({{stored_name.c_str(), stored_name.length()}, col_idx});
+					}
+				}
 			}
 		}
+		seen_names[generated_name] = col_idx;
 		nested_vals.push_back(JSONCommon::AllocateArray<yyjson_val *>(alc, count));
 	}
 
