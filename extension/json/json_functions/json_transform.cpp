@@ -25,9 +25,8 @@ JSONTransformOptions::JSONTransformOptions(bool strict_cast_p, bool error_duplic
 //! Forward declaration for recursion
 static LogicalType StructureStringToType(yyjson_val *val, ClientContext &context);
 
-
 static bool MatchAutoRenamedKey(const JSONKey &candidate, const char *key_ptr, const idx_t key_len) {
-	if (candidate.len <= key_len + 2) {
+	if (candidate.len < key_len + 2) {
 		return false;
 	}
 	if (FastMemcmp(candidate.ptr, key_ptr, key_len) != 0 || candidate.ptr[key_len] != '_') {
