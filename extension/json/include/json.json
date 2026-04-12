@@ -29,6 +29,16 @@
         "id": 104,
         "name": "delay_error",
         "type": "bool"
+      },
+      {
+        "id": 105,
+        "name": "merge_case_insensitive_keys",
+        "type": "bool"
+      },
+      {
+        "id": 106,
+        "name": "auto_rename_case_insensitive_keys",
+        "type": "bool"
       }
     ],
     "pointer_type": "none"

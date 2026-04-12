@@ -124,6 +124,8 @@ struct JSONReaderOptions {
 	//! Forced date/timestamp formats
 	string date_format;
 	string timestamp_format;
+	//! Whether to merge auto-detected columns that only differ in case
+	bool merge_case_insensitive_columns = false;
 };
 
 } // namespace duckdb

@@ -33,6 +33,10 @@ public:
 	bool error_missing_key = false;
 	//! Throws an error if an object has a key we didn't know about
 	bool error_unknown_key = false;
+	//! Merge keys case-insensitively while transforming objects
+	bool merge_case_insensitive_keys = false;
+	//! Match keys against auto-renamed names (e.g. key -> key_1)
+	bool auto_rename_case_insensitive_keys = false;
 
 	//! Whether to delay the error when transforming (e.g., when non-strict casting or reading from file)
 	bool delay_error = false;

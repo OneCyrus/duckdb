@@ -1,0 +1,57 @@
+# name: test/sql/json/issues/issue17252.test
+# description: Align nested and root case-insensitive auto-detection behavior and support merge mode
+# group: [issues]
+
+require json
+
+statement ok
+PRAGMA enable_verification
+
+query T
+SELECT lower(column_name)
+FROM (DESCRIBE SELECT *
+      FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited'))
+ORDER BY 1
+----
+nested
+root
+root_1
+
+
+query T
+SELECT lower(typeof(nested))
+FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited')
+LIMIT 1
+----
+struct(foo bigint, foo_1 varchar)
+
+query TTT
+SELECT root, nested.foo, nested.foo_1
+FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited')
+ORDER BY ALL
+----
+1	1	NULL
+x	NULL	y
+query T
+SELECT lower(column_name)
+FROM (DESCRIBE SELECT *
+      FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited',
+                          case_insensitive_column_handling=true))
+ORDER BY 1
+----
+nested
+root
+
+query TT
+SELECT root, nested.foo
+FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited',
+                    case_insensitive_column_handling=true)
+ORDER BY ALL
+----
+1	1
+x	y
+
+statement error
+SELECT *
+FROM read_json_auto('{DATA_DIR}/json/case_merge_root_nested.ndjson', format='newline_delimited',
+                    case_insensitive_column_handling='wat')
