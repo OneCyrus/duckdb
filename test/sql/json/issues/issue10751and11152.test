@@ -5,13 +5,11 @@
 require json
 
 # issue 10751
-statement error
+statement ok
 create or replace table json_test as select * from read_json_auto('{DATA_DIR}/json/10751.json', format = 'newline_delimited');
-----
-Not implemented Error: Duplicate name
 
 statement ok
-create table json_test as select * from read_json_auto('{DATA_DIR}/json/10751.json', format = 'newline_delimited', ignore_errors=true);
+create or replace table json_test as select * from read_json_auto('{DATA_DIR}/json/10751.json', format = 'newline_delimited', ignore_errors=true);
 
 statement ok
 select * from json_test;
