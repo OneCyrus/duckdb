@@ -1,0 +1,43 @@
+# name: test/sql/json/issues/issue17252.test
+# description: Test issue 17252 - nested JSON key collisions should be deduped or merged by strategy
+# group: [issues]
+
+require json
+
+query VIIVV
+SELECT event_name, id, Id_1, props.retention, props.Retention_1
+FROM read_json_auto('{DATA_DIR}/json/issue17252.json')
+ORDER BY event_name;
+----
+install	1	10	30 days	30 Days
+open	NULL	20	NULL	7 days
+
+query VIV
+SELECT event_name, id, props.retention
+FROM read_json_auto('{DATA_DIR}/json/issue17252.json', json_key_strategy='merge_casefolded')
+ORDER BY event_name;
+----
+install	10	30 Days
+open	20	7 days
+
+query VIV
+SELECT event_name, id, props.retention
+FROM read_json('{DATA_DIR}/json/issue17252.json', auto_detect=true, json_key_strategy='merge_casefolded')
+ORDER BY event_name;
+----
+install	10	30 Days
+open	20	7 days
+
+statement error
+SELECT * FROM read_json_auto('{DATA_DIR}/json/issue17252_duplicates.json');
+
+query IV
+SELECT id, props.retention
+FROM read_json_auto('{DATA_DIR}/json/issue17252_duplicates.json', json_key_strategy='merge_casefolded');
+----
+2	B
+
+statement error
+SELECT * FROM read_json_auto('{DATA_DIR}/json/issue17252.json', json_key_strategy='invalid');
+----
+Binder Error: read_json "json_key_strategy" parameter must be one of ['dedupe', 'merge_casefolded']
