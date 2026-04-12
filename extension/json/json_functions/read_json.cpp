@@ -10,7 +10,7 @@
 namespace duckdb {
 
 static string GetDeduplicatedStructName(const string &name, case_insensitive_set_t &seen_names,
-                                             case_insensitive_map_t<idx_t> &name_counts) {
+                                        case_insensitive_map_t<idx_t> &name_counts) {
 	auto inserted = seen_names.insert(name).second;
 	if (inserted) {
 		name_counts[name] = 1;

@@ -324,7 +324,8 @@ void JSONMultiFileInfo::BindReader(ClientContext &context, vector<LogicalType> &
 	transform_options.strict_cast = !options.ignore_errors;
 	transform_options.error_duplicate_key = !options.ignore_errors && !options.merge_casefolded_keys;
 	transform_options.error_missing_key = false;
-	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors && options.merge_casefolded_keys;
+	transform_options.error_unknown_key =
+	    options.auto_detect && !options.ignore_errors && options.merge_casefolded_keys;
 	transform_options.merge_casefolded_keys = options.merge_casefolded_keys;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;

@@ -411,7 +411,8 @@ static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, cons
 	}
 }
 
-static optional_ptr<JSONStructureNode> FindCasefoldedChild(JSONStructureDescription &description, const string &obj_key) {
+static optional_ptr<JSONStructureNode> FindCasefoldedChild(JSONStructureDescription &description,
+                                                           const string &obj_key) {
 	for (auto &child : description.children) {
 		D_ASSERT(child.key);
 		if (StringUtil::CIEquals(*child.key, obj_key)) {
