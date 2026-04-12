@@ -33,6 +33,8 @@ public:
 	bool error_missing_key = false;
 	//! Throws an error if an object has a key we didn't know about
 	bool error_unknown_key = false;
+	//! Match object keys to columns using case-insensitive comparison
+	bool merge_casefolded_keys = false;
 
 	//! Whether to delay the error when transforming (e.g., when non-strict casting or reading from file)
 	bool delay_error = false;

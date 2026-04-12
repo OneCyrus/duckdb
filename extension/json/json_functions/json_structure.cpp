@@ -2,6 +2,7 @@
 
 #include "duckdb/common/enum_util.hpp"
 #include "duckdb/common/extra_type_info.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "json_executors.hpp"
 #include "json_scan.hpp"
 #include "json_transform.hpp"
@@ -397,7 +398,8 @@ JSONStructureNode &JSONStructureDescription::GetOrCreateChild(yyjson_val *key, y
 	return child;
 }
 
-static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, const bool ignore_errors) {
+static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, const bool ignore_errors,
+                                  const bool merge_casefolded_keys) {
 	D_ASSERT(yyjson_is_arr(arr));
 	auto &description = node.GetOrCreateDescription(LogicalTypeId::LIST);
 	auto &child = description.GetOrCreateChild();
@@ -405,33 +407,42 @@ static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, cons
 	size_t idx, max;
 	yyjson_val *val;
 	yyjson_arr_foreach(arr, idx, max, val) {
-		JSONStructure::ExtractStructure(val, child, ignore_errors);
+		JSONStructure::ExtractStructure(val, child, ignore_errors, merge_casefolded_keys);
 	}
 }
 
-static void ExtractStructureObject(yyjson_val *obj, JSONStructureNode &node, const bool ignore_errors) {
+static optional_ptr<JSONStructureNode> FindCasefoldedChild(JSONStructureDescription &description,
+                                                           const string &obj_key) {
+	for (auto &child : description.children) {
+		D_ASSERT(child.key);
+		if (StringUtil::CIEquals(*child.key, obj_key)) {
+			return child;
+		}
+	}
+	return nullptr;
+}
+
+static void ExtractStructureObject(yyjson_val *obj, JSONStructureNode &node, const bool ignore_errors,
+                                   const bool merge_casefolded_keys) {
 	D_ASSERT(yyjson_is_obj(obj));
 	auto &description = node.GetOrCreateDescription(LogicalTypeId::STRUCT);
-
-	// Keep track of keys so we can detect duplicates
-	unordered_set<string> obj_keys;
-	case_insensitive_set_t ci_obj_keys;
 
 	size_t idx, max;
 	yyjson_val *key, *val;
 	yyjson_obj_foreach(obj, idx, max, key, val) {
 		const string obj_key(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key));
-		auto insert_result = obj_keys.insert(obj_key);
-		if (!ignore_errors && !insert_result.second) { // Exact match
-			JSONCommon::ThrowValFormatError("Duplicate key \"" + obj_key + "\" in object %s", obj);
+		if (!merge_casefolded_keys) {
+			auto &child = description.GetOrCreateChild(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key));
+			JSONStructure::ExtractStructure(val, child, ignore_errors, merge_casefolded_keys);
+			continue;
 		}
-		insert_result = ci_obj_keys.insert(obj_key);
-		if (!ignore_errors && !insert_result.second) { // Case-insensitive match
-			JSONCommon::ThrowValFormatError("Duplicate key (different case) \"" + obj_key + "\" and \"" +
-			                                    *insert_result.first + "\" in object %s",
-			                                obj);
+		auto existing_child = FindCasefoldedChild(description, obj_key);
+		if (existing_child) {
+			JSONStructure::ExtractStructure(val, *existing_child, ignore_errors, merge_casefolded_keys);
+		} else {
+			auto &child = description.GetOrCreateChild(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key));
+			JSONStructure::ExtractStructure(val, child, ignore_errors, merge_casefolded_keys);
 		}
-		description.GetOrCreateChild(key, val, ignore_errors);
 	}
 }
 
@@ -445,7 +456,8 @@ static void ExtractStructureVal(yyjson_val *val, JSONStructureNode &node) {
 	}
 }
 
-void JSONStructure::ExtractStructure(yyjson_val *val, JSONStructureNode &node, const bool ignore_errors) {
+void JSONStructure::ExtractStructure(yyjson_val *val, JSONStructureNode &node, const bool ignore_errors,
+                                     const bool merge_casefolded_keys) {
 	node.count++;
 	const auto tag = yyjson_get_tag(val);
 	if (tag == (YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE)) {
@@ -454,9 +466,9 @@ void JSONStructure::ExtractStructure(yyjson_val *val, JSONStructureNode &node, c
 
 	switch (tag) {
 	case YYJSON_TYPE_ARR | YYJSON_SUBTYPE_NONE:
-		return ExtractStructureArray(val, node, ignore_errors);
+		return ExtractStructureArray(val, node, ignore_errors, merge_casefolded_keys);
 	case YYJSON_TYPE_OBJ | YYJSON_SUBTYPE_NONE:
-		return ExtractStructureObject(val, node, ignore_errors);
+		return ExtractStructureObject(val, node, ignore_errors, merge_casefolded_keys);
 	default:
 		return ExtractStructureVal(val, node);
 	}

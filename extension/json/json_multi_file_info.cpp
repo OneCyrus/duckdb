@@ -143,6 +143,18 @@ bool JSONMultiFileInfo::ParseOption(ClientContext &context, const string &key, c
 		}
 		return true;
 	}
+	if (loption == "json_key_strategy") {
+		auto arg = StringUtil::Lower(StringValue::Get(value));
+		if (arg == "dedupe") {
+			options.merge_casefolded_keys = false;
+		} else if (arg == "merge_casefolded") {
+			options.merge_casefolded_keys = true;
+		} else {
+			throw BinderException(
+			    "read_json \"json_key_strategy\" parameter must be one of ['dedupe', 'merge_casefolded']");
+		}
+		return true;
+	}
 	if (loption == "dateformat" || loption == "date_format") {
 		auto format_string = StringValue::Get(value);
 		if (StringUtil::Lower(format_string) == "iso") {
@@ -310,9 +322,11 @@ void JSONMultiFileInfo::BindReader(ClientContext &context, vector<LogicalType> &
 
 	auto &transform_options = json_data.transform_options;
 	transform_options.strict_cast = !options.ignore_errors;
-	transform_options.error_duplicate_key = !options.ignore_errors;
+	transform_options.error_duplicate_key = !options.ignore_errors && !options.merge_casefolded_keys;
 	transform_options.error_missing_key = false;
-	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors;
+	transform_options.error_unknown_key =
+	    options.auto_detect && !options.ignore_errors && options.merge_casefolded_keys;
+	transform_options.merge_casefolded_keys = options.merge_casefolded_keys;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;
 

@@ -8,6 +8,7 @@
 #include "json_transform.hpp"
 
 #include "duckdb/common/enum_util.hpp"
+#include "duckdb/common/string_util.hpp"
 #include "duckdb/common/serializer/deserializer.hpp"
 #include "duckdb/common/serializer/serializer.hpp"
 #include "duckdb/common/types.hpp"
@@ -381,15 +382,58 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 
 	// Build hash map from key to column index so we don't have to linearly search using the key
 	json_key_map_t<idx_t> key_map;
+	case_insensitive_map_t<idx_t> casefolded_name_counts;
+	unordered_map<string, idx_t> dedup_base_name_map;
 	vector<yyjson_val **> nested_vals;
 	nested_vals.reserve(column_count);
 	for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
 		key_map.insert({{names[col_idx].c_str(), names[col_idx].length()}, col_idx});
+		casefolded_name_counts[names[col_idx]]++;
+	}
+	for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
+		const auto &name = names[col_idx];
+		const auto suffix_separator = name.rfind('_');
+		if (suffix_separator != string::npos && suffix_separator + 1 < name.size()) {
+			bool is_numeric_suffix = true;
+			for (idx_t i = suffix_separator + 1; i < name.size(); i++) {
+				if (!StringUtil::CharacterIsDigit(name[i])) {
+					is_numeric_suffix = false;
+					break;
+				}
+			}
+			if (is_numeric_suffix) {
+				const auto base_name = name.substr(0, suffix_separator);
+				if (key_map.find({base_name.c_str(), base_name.length()}) == key_map.end() &&
+				    casefolded_name_counts.find(base_name) != casefolded_name_counts.end() &&
+				    dedup_base_name_map.find(base_name) == dedup_base_name_map.end()) {
+					dedup_base_name_map.emplace(base_name, col_idx);
+				}
+			}
+		}
 		nested_vals.push_back(JSONCommon::AllocateArray<yyjson_val *>(alc, count));
 	}
 
 	idx_t found_key_count;
 	auto found_keys = JSONCommon::AllocateArray<bool>(alc, column_count);
+	auto find_column_idx = [&](const char *key_ptr, const size_t key_len) -> optional_idx {
+		auto it = key_map.find({key_ptr, key_len});
+		if (it != key_map.end()) {
+			return it->second;
+		}
+		auto dedup_lookup = dedup_base_name_map.find(string(key_ptr, key_len));
+		if (dedup_lookup != dedup_base_name_map.end()) {
+			return dedup_lookup->second;
+		}
+		if (!options.merge_casefolded_keys) {
+			return optional_idx();
+		}
+		for (idx_t col_idx = 0; col_idx < column_count; col_idx++) {
+			if (StringUtil::CIEquals(names[col_idx], string(key_ptr, key_len))) {
+				return col_idx;
+			}
+		}
+		return optional_idx();
+	};
 
 	bool success = true;
 
@@ -425,20 +469,22 @@ bool JSONTransform::TransformObject(yyjson_val *objects[], yyjson_alc *alc, cons
 		yyjson_obj_foreach(objects[i], idx, max, key, val) {
 			auto key_ptr = unsafe_yyjson_get_str(key);
 			auto key_len = unsafe_yyjson_get_len(key);
-			auto it = key_map.find({key_ptr, key_len});
-			if (it != key_map.end()) {
-				const auto &col_idx = it->second;
-				if (found_keys[col_idx]) {
-					if (success && options.error_duplicate_key) {
+			auto col_idx = find_column_idx(key_ptr, key_len);
+			if (col_idx.IsValid()) {
+				const auto col_idx_value = col_idx.GetIndex();
+				if (found_keys[col_idx_value]) {
+					if (!options.merge_casefolded_keys && success && options.error_duplicate_key) {
 						options.error_message =
 						    StringUtil::Format("Object %s has duplicate key \"%s\"",
 						                       JSONCommon::ValToString(objects[i], 50), string(key_ptr, key_len));
 						options.object_index = i;
 						success = false;
+					} else {
+						nested_vals[col_idx_value][i] = val;
 					}
 				} else {
-					nested_vals[col_idx][i] = val;
-					found_keys[col_idx] = true;
+					nested_vals[col_idx_value][i] = val;
+					found_keys[col_idx_value] = true;
 					found_key_count++;
 				}
 			} else if (success && error_unknown_key && options.error_unknown_key) {

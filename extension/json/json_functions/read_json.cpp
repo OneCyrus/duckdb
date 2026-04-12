@@ -9,30 +9,39 @@
 
 namespace duckdb {
 
-static inline LogicalType RemoveDuplicateStructKeys(const LogicalType &type, const bool ignore_errors) {
+static string GetDeduplicatedStructName(const string &name, case_insensitive_set_t &seen_names,
+                                        case_insensitive_map_t<idx_t> &name_counts) {
+	auto inserted = seen_names.insert(name).second;
+	if (inserted) {
+		name_counts[name] = 1;
+		return name;
+	}
+	auto suffix = name_counts[name];
+	string candidate;
+	do {
+		candidate = name + "_" + to_string(suffix++);
+	} while (!seen_names.insert(candidate).second);
+	name_counts[name] = suffix;
+	return candidate;
+}
+
+static inline LogicalType RemoveDuplicateStructKeys(const LogicalType &type) {
 	switch (type.id()) {
 	case LogicalTypeId::STRUCT: {
-		case_insensitive_set_t child_names;
+		case_insensitive_set_t seen_names;
+		case_insensitive_map_t<idx_t> name_counts;
 		child_list_t<LogicalType> child_types;
 		for (auto &child_type : StructType::GetChildTypes(type)) {
-			auto insert_success = child_names.insert(child_type.first).second;
-			if (!insert_success) {
-				if (ignore_errors) {
-					continue;
-				}
-				throw NotImplementedException(
-				    "Duplicate name \"%s\" in struct auto-detected in JSON, try ignore_errors=true", child_type.first);
-			} else {
-				child_types.emplace_back(child_type.first, RemoveDuplicateStructKeys(child_type.second, ignore_errors));
-			}
+			auto dedup_name = GetDeduplicatedStructName(child_type.first, seen_names, name_counts);
+			child_types.emplace_back(std::move(dedup_name), RemoveDuplicateStructKeys(child_type.second));
 		}
 		return LogicalType::STRUCT(child_types);
 	}
 	case LogicalTypeId::MAP:
-		return LogicalType::MAP(RemoveDuplicateStructKeys(MapType::KeyType(type), ignore_errors),
-		                        RemoveDuplicateStructKeys(MapType::ValueType(type), ignore_errors));
+		return LogicalType::MAP(RemoveDuplicateStructKeys(MapType::KeyType(type)),
+		                        RemoveDuplicateStructKeys(MapType::ValueType(type)));
 	case LogicalTypeId::LIST:
-		return LogicalType::LIST(RemoveDuplicateStructKeys(ListType::GetChildType(type), ignore_errors));
+		return LogicalType::LIST(RemoveDuplicateStructKeys(ListType::GetChildType(type)));
 	default:
 		return type;
 	}
@@ -105,11 +114,11 @@ public:
 			for (idx_t i = 0; i < next; i++) {
 				const auto &val = scan_state.values[i];
 				if (val) {
-					JSONStructure::ExtractStructure(val, node, true);
+					JSONStructure::ExtractStructure(val, node, true, options.merge_casefolded_keys);
 				}
 			}
 			remaining -= next;
-			if (!node.ContainsVarchar()) { // Can't refine non-VARCHAR types
+			if (!node.ContainsVarchar() || options.merge_casefolded_keys) { // Can't refine non-VARCHAR types
 				continue;
 			}
 			node.InitializeCandidateTypes(options.max_depth, options.convert_strings_to_integers);
@@ -217,7 +226,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 			return_types.reserve(child_types.size());
 			names.reserve(child_types.size());
 			for (auto &child_type : child_types) {
-				return_types.emplace_back(RemoveDuplicateStructKeys(child_type.second, options.ignore_errors));
+				return_types.emplace_back(RemoveDuplicateStructKeys(child_type.second));
 				names.emplace_back(child_type.first);
 			}
 		} else {
@@ -226,7 +235,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 		}
 	} else {
 		D_ASSERT(json_data.options.record_type == JSONRecordType::VALUES);
-		return_types.emplace_back(RemoveDuplicateStructKeys(type, options.ignore_errors));
+		return_types.emplace_back(RemoveDuplicateStructKeys(type));
 		names.emplace_back("json");
 	}
 }
@@ -244,6 +253,7 @@ TableFunction JSONFunctions::GetReadJSONTableFunction(shared_ptr<JSONScanInfo> f
 	table_function.named_parameters["timestamp_format"] = LogicalType::VARCHAR;
 	table_function.named_parameters["records"] = LogicalType::VARCHAR;
 	table_function.named_parameters["maximum_sample_files"] = LogicalType::BIGINT;
+	table_function.named_parameters["json_key_strategy"] = LogicalType::VARCHAR;
 
 	// TODO: might be able to do filter pushdown/prune ?
 	table_function.function_info = std::move(function_info);

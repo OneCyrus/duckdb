@@ -87,7 +87,8 @@ public:
 
 struct JSONStructure {
 public:
-	static void ExtractStructure(yyjson_val *val, JSONStructureNode &node, bool ignore_errors);
+	static void ExtractStructure(yyjson_val *val, JSONStructureNode &node, bool ignore_errors,
+	                             bool merge_casefolded_keys = false);
 	static void MergeNodes(JSONStructureNode &merged, const JSONStructureNode &node);
 	static LogicalType StructureToType(ClientContext &context, const JSONStructureNode &node, idx_t max_depth,
 	                                   double field_appearance_threshold, idx_t map_inference_threshold,

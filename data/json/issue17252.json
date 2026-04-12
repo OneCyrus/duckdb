@@ -1,0 +1,2 @@
+{"event_name": "install", "id": 1, "Id": 10, "props": {"retention": "30 days", "Retention": "30 Days"}}
+{"event_name": "open", "Id": 20, "props": {"Retention": "7 days"}}
