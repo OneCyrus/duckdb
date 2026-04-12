@@ -41,3 +41,11 @@ statement error
 SELECT * FROM read_json_auto('{DATA_DIR}/json/issue17252.json', json_key_strategy='invalid');
 ----
 Binder Error: read_json "json_key_strategy" parameter must be one of ['dedupe', 'merge_casefolded']
+
+query I
+SELECT foo_1
+FROM read_json('{DATA_DIR}/json/issue17252_suffix.json', columns={foo_1: 'INTEGER'});
+----
+11
+NULL
+2
