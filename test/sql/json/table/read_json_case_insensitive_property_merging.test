@@ -24,3 +24,33 @@ ORDER BY 1
 1
 2
 3
+
+# Multi-file + explicit columns (auto_detect=false): verifies case-insensitive matching during transform.
+statement ok
+COPY (SELECT {'Inner': 10} AS "Root") TO '{TEMP_DIR}/json_ci_merge_manual_1.json' (FORMAT JSON)
+
+statement ok
+COPY (SELECT {'inner': 20} AS "root") TO '{TEMP_DIR}/json_ci_merge_manual_2.json' (FORMAT JSON)
+
+query I
+SELECT Root.Inner
+FROM read_json(['{TEMP_DIR}/json_ci_merge_manual_1.json', '{TEMP_DIR}/json_ci_merge_manual_2.json'],
+               columns={"Root": "STRUCT(Inner INTEGER)"},
+               auto_detect=false,
+               records='true')
+ORDER BY 1 NULLS LAST
+----
+10
+NULL
+
+query I
+SELECT Root.Inner
+FROM read_json(['{TEMP_DIR}/json_ci_merge_manual_1.json', '{TEMP_DIR}/json_ci_merge_manual_2.json'],
+               columns={"Root": "STRUCT(Inner INTEGER)"},
+               auto_detect=false,
+               records='true',
+               case_insensitive_property_merging=true)
+ORDER BY 1
+----
+10
+20
