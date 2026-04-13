@@ -143,6 +143,10 @@ bool JSONMultiFileInfo::ParseOption(ClientContext &context, const string &key, c
 		}
 		return true;
 	}
+	if (loption == "case_insensitive_property_merging") {
+		options.case_insensitive_property_merging = BooleanValue::Get(value);
+		return true;
+	}
 	if (loption == "dateformat" || loption == "date_format") {
 		auto format_string = StringValue::Get(value);
 		if (StringUtil::Lower(format_string) == "iso") {
@@ -313,6 +317,7 @@ void JSONMultiFileInfo::BindReader(ClientContext &context, vector<LogicalType> &
 	transform_options.error_duplicate_key = !options.ignore_errors;
 	transform_options.error_missing_key = false;
 	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors;
+	transform_options.case_insensitive_property_merging = options.case_insensitive_property_merging;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;
 

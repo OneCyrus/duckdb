@@ -138,7 +138,8 @@ void JSONStructureNode::InitializeCandidateTypes(const idx_t max_depth, const bo
 }
 
 void JSONStructureNode::RefineCandidateTypes(yyjson_val *vals[], const idx_t val_count, Vector &string_vector,
-                                             ArenaAllocator &allocator, MutableDateFormatMap &date_format_map) {
+                                             ArenaAllocator &allocator, MutableDateFormatMap &date_format_map,
+                                             const bool case_insensitive_property_merging) {
 	if (descriptions.size() != 1) {
 		// We can't refine types if we have more than 1 description (yet), defaults to JSON type for now
 		return;
@@ -149,9 +150,11 @@ void JSONStructureNode::RefineCandidateTypes(yyjson_val *vals[], const idx_t val
 	auto &description = descriptions[0];
 	switch (description.type) {
 	case LogicalTypeId::LIST:
-		return RefineCandidateTypesArray(vals, val_count, string_vector, allocator, date_format_map);
+		return RefineCandidateTypesArray(vals, val_count, string_vector, allocator, date_format_map,
+		                                 case_insensitive_property_merging);
 	case LogicalTypeId::STRUCT:
-		return RefineCandidateTypesObject(vals, val_count, string_vector, allocator, date_format_map);
+		return RefineCandidateTypesObject(vals, val_count, string_vector, allocator, date_format_map,
+		                                  case_insensitive_property_merging);
 	case LogicalTypeId::VARCHAR:
 		return RefineCandidateTypesString(vals, val_count, string_vector, date_format_map);
 	default:
@@ -160,7 +163,8 @@ void JSONStructureNode::RefineCandidateTypes(yyjson_val *vals[], const idx_t val
 }
 
 void JSONStructureNode::RefineCandidateTypesArray(yyjson_val *vals[], const idx_t val_count, Vector &string_vector,
-                                                  ArenaAllocator &allocator, MutableDateFormatMap &date_format_map) {
+                                                  ArenaAllocator &allocator, MutableDateFormatMap &date_format_map,
+                                                  const bool case_insensitive_property_merging) {
 	D_ASSERT(descriptions.size() == 1 && descriptions[0].type == LogicalTypeId::LIST);
 	auto &desc = descriptions[0];
 	D_ASSERT(desc.children.size() == 1);
@@ -187,11 +191,13 @@ void JSONStructureNode::RefineCandidateTypesArray(yyjson_val *vals[], const idx_
 			}
 		}
 	}
-	child.RefineCandidateTypes(child_vals, total_list_size, string_vector, allocator, date_format_map);
+	child.RefineCandidateTypes(child_vals, total_list_size, string_vector, allocator, date_format_map,
+	                           case_insensitive_property_merging);
 }
 
 void JSONStructureNode::RefineCandidateTypesObject(yyjson_val *vals[], const idx_t val_count, Vector &string_vector,
-                                                   ArenaAllocator &allocator, MutableDateFormatMap &date_format_map) {
+                                                   ArenaAllocator &allocator, MutableDateFormatMap &date_format_map,
+                                                   const bool case_insensitive_property_merging) {
 	D_ASSERT(descriptions.size() == 1 && descriptions[0].type == LogicalTypeId::STRUCT);
 	auto &desc = descriptions[0];
 
@@ -219,6 +225,15 @@ void JSONStructureNode::RefineCandidateTypesObject(yyjson_val *vals[], const idx
 				const auto key_ptr = unsafe_yyjson_get_str(child_key);
 				const auto key_len = unsafe_yyjson_get_len(child_key);
 				auto it = key_map.find({key_ptr, key_len});
+				if (it == key_map.end() && case_insensitive_property_merging) {
+					auto ci_it = desc.ci_key_map.find(string(key_ptr, key_len));
+					if (ci_it != desc.ci_key_map.end()) {
+						child_vals[ci_it->second][i] = child_val;
+						found_key_count += !found_keys[ci_it->second];
+						found_keys[ci_it->second] = true;
+						continue;
+					}
+				}
 				D_ASSERT(it != key_map.end());
 				const auto child_idx = it->second;
 				child_vals[child_idx][i] = child_val;
@@ -243,7 +258,7 @@ void JSONStructureNode::RefineCandidateTypesObject(yyjson_val *vals[], const idx
 
 	for (idx_t child_idx = 0; child_idx < child_count; child_idx++) {
 		desc.children[child_idx].RefineCandidateTypes(child_vals[child_idx], val_count, string_vector, allocator,
-		                                              date_format_map);
+		                                              date_format_map, case_insensitive_property_merging);
 	}
 }
 
@@ -350,6 +365,7 @@ JSONStructureDescription::JSONStructureDescription(const LogicalTypeId type_p) :
 static void SwapJSONStructureDescription(JSONStructureDescription &a, JSONStructureDescription &b) noexcept {
 	std::swap(a.type, b.type);
 	std::swap(a.key_map, b.key_map);
+	std::swap(a.ci_key_map, b.ci_key_map);
 	std::swap(a.children, b.children);
 	std::swap(a.candidate_types, b.candidate_types);
 	std::swap(a.has_large_ubigint, b.has_large_ubigint);
@@ -373,31 +389,44 @@ JSONStructureNode &JSONStructureDescription::GetOrCreateChild() {
 	return children.back();
 }
 
-JSONStructureNode &JSONStructureDescription::GetOrCreateChild(const char *key_ptr, const size_t key_size) {
+JSONStructureNode &JSONStructureDescription::GetOrCreateChild(const char *key_ptr, const size_t key_size,
+                                                              const bool case_insensitive) {
 	// Check if there is already a child with the same key
 	const JSONKey temp_key {key_ptr, key_size};
 	const auto it = key_map.find(temp_key);
 	if (it != key_map.end()) {
 		return children[it->second]; // Found it
 	}
+	if (case_insensitive) {
+		auto ci_it = ci_key_map.find(string(key_ptr, key_size));
+		if (ci_it != ci_key_map.end()) {
+			return children[ci_it->second];
+		}
+	}
 
 	// Didn't find, create a new child
 	children.emplace_back(key_ptr, key_size);
+	const auto new_idx = children.size() - 1;
 	const auto &persistent_key_string = *children.back().key;
 	JSONKey new_key {persistent_key_string.c_str(), persistent_key_string.length()};
-	key_map.emplace(new_key, children.size() - 1);
+	key_map.emplace(new_key, new_idx);
+	if (case_insensitive) {
+		ci_key_map.emplace(persistent_key_string, new_idx);
+	}
 	return children.back();
 }
 
 JSONStructureNode &JSONStructureDescription::GetOrCreateChild(yyjson_val *key, yyjson_val *val,
-                                                              const bool ignore_errors) {
+                                                              const bool ignore_errors,
+                                                              const bool case_insensitive) {
 	D_ASSERT(yyjson_is_str(key));
-	auto &child = GetOrCreateChild(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key));
-	JSONStructure::ExtractStructure(val, child, ignore_errors);
+	auto &child = GetOrCreateChild(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key), case_insensitive);
+	JSONStructure::ExtractStructure(val, child, ignore_errors, case_insensitive);
 	return child;
 }
 
-static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, const bool ignore_errors) {
+static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, const bool ignore_errors,
+                                  const bool case_insensitive_property_merging) {
 	D_ASSERT(yyjson_is_arr(arr));
 	auto &description = node.GetOrCreateDescription(LogicalTypeId::LIST);
 	auto &child = description.GetOrCreateChild();
@@ -405,11 +434,12 @@ static void ExtractStructureArray(yyjson_val *arr, JSONStructureNode &node, cons
 	size_t idx, max;
 	yyjson_val *val;
 	yyjson_arr_foreach(arr, idx, max, val) {
-		JSONStructure::ExtractStructure(val, child, ignore_errors);
+		JSONStructure::ExtractStructure(val, child, ignore_errors, case_insensitive_property_merging);
 	}
 }
 
-static void ExtractStructureObject(yyjson_val *obj, JSONStructureNode &node, const bool ignore_errors) {
+static void ExtractStructureObject(yyjson_val *obj, JSONStructureNode &node, const bool ignore_errors,
+                                   const bool case_insensitive_property_merging) {
 	D_ASSERT(yyjson_is_obj(obj));
 	auto &description = node.GetOrCreateDescription(LogicalTypeId::STRUCT);
 
@@ -431,7 +461,7 @@ static void ExtractStructureObject(yyjson_val *obj, JSONStructureNode &node, con
 			                                    *insert_result.first + "\" in object %s",
 			                                obj);
 		}
-		description.GetOrCreateChild(key, val, ignore_errors);
+		description.GetOrCreateChild(key, val, ignore_errors, case_insensitive_property_merging);
 	}
 }
 
@@ -445,7 +475,8 @@ static void ExtractStructureVal(yyjson_val *val, JSONStructureNode &node) {
 	}
 }
 
-void JSONStructure::ExtractStructure(yyjson_val *val, JSONStructureNode &node, const bool ignore_errors) {
+void JSONStructure::ExtractStructure(yyjson_val *val, JSONStructureNode &node, const bool ignore_errors,
+                                     const bool case_insensitive_property_merging) {
 	node.count++;
 	const auto tag = yyjson_get_tag(val);
 	if (tag == (YYJSON_TYPE_NULL | YYJSON_SUBTYPE_NONE)) {
@@ -454,9 +485,9 @@ void JSONStructure::ExtractStructure(yyjson_val *val, JSONStructureNode &node, c
 
 	switch (tag) {
 	case YYJSON_TYPE_ARR | YYJSON_SUBTYPE_NONE:
-		return ExtractStructureArray(val, node, ignore_errors);
+		return ExtractStructureArray(val, node, ignore_errors, case_insensitive_property_merging);
 	case YYJSON_TYPE_OBJ | YYJSON_SUBTYPE_NONE:
-		return ExtractStructureObject(val, node, ignore_errors);
+		return ExtractStructureObject(val, node, ignore_errors, case_insensitive_property_merging);
 	default:
 		return ExtractStructureVal(val, node);
 	}
@@ -550,22 +581,25 @@ static LogicalType StructureToTypeArray(ClientContext &context, const JSONStruct
 	                                                        depth + 1, null_type));
 }
 
-static void MergeNodeArray(JSONStructureNode &merged, const JSONStructureDescription &child_desc) {
+static void MergeNodeArray(JSONStructureNode &merged, const JSONStructureDescription &child_desc,
+                           const bool case_insensitive_property_merging) {
 	D_ASSERT(child_desc.type == LogicalTypeId::LIST);
 	auto &merged_desc = merged.GetOrCreateDescription(LogicalTypeId::LIST);
 	auto &merged_child = merged_desc.GetOrCreateChild();
 	for (auto &list_child : child_desc.children) {
-		JSONStructure::MergeNodes(merged_child, list_child);
+		JSONStructure::MergeNodes(merged_child, list_child, case_insensitive_property_merging);
 	}
 }
 
-static void MergeNodeObject(JSONStructureNode &merged, const JSONStructureDescription &child_desc) {
+static void MergeNodeObject(JSONStructureNode &merged, const JSONStructureDescription &child_desc,
+                            const bool case_insensitive_property_merging) {
 	D_ASSERT(child_desc.type == LogicalTypeId::STRUCT);
 	auto &merged_desc = merged.GetOrCreateDescription(LogicalTypeId::STRUCT);
 	for (auto &struct_child : child_desc.children) {
 		const auto &struct_child_key = *struct_child.key;
-		auto &merged_child = merged_desc.GetOrCreateChild(struct_child_key.c_str(), struct_child_key.length());
-		JSONStructure::MergeNodes(merged_child, struct_child);
+		auto &merged_child = merged_desc.GetOrCreateChild(struct_child_key.c_str(), struct_child_key.length(),
+		                                                  case_insensitive_property_merging);
+		JSONStructure::MergeNodes(merged_child, struct_child, case_insensitive_property_merging);
 	}
 }
 
@@ -590,16 +624,17 @@ static void MergeNodeVal(JSONStructureNode &merged, const JSONStructureDescripti
 	merged.initialized = true;
 }
 
-void JSONStructure::MergeNodes(JSONStructureNode &merged, const JSONStructureNode &node) {
+void JSONStructure::MergeNodes(JSONStructureNode &merged, const JSONStructureNode &node,
+                               const bool case_insensitive_property_merging) {
 	merged.count += node.count;
 	merged.null_count += node.null_count;
 	for (const auto &child_desc : node.descriptions) {
 		switch (child_desc.type) {
 		case LogicalTypeId::LIST:
-			MergeNodeArray(merged, child_desc);
+			MergeNodeArray(merged, child_desc, case_insensitive_property_merging);
 			break;
 		case LogicalTypeId::STRUCT:
-			MergeNodeObject(merged, child_desc);
+			MergeNodeObject(merged, child_desc, case_insensitive_property_merging);
 			break;
 		default:
 			MergeNodeVal(merged, child_desc, node.initialized);

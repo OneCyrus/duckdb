@@ -29,6 +29,11 @@
         "id": 104,
         "name": "delay_error",
         "type": "bool"
+      },
+      {
+        "id": 105,
+        "name": "case_insensitive_property_merging",
+        "type": "bool"
       }
     ],
     "pointer_type": "none"

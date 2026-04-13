@@ -1,0 +1,26 @@
+# name: test/sql/json/table/read_json_case_insensitive_property_merging.test
+
+statement ok
+COPY (SELECT {'Inner': 1} AS "Root") TO '{TEMP_DIR}/json_ci_merge_1.json' (FORMAT JSON)
+
+statement ok
+COPY (SELECT {'Inner': 2} AS "root") TO '{TEMP_DIR}/json_ci_merge_2.json' (FORMAT JSON)
+
+statement ok
+COPY (SELECT {'inner': 3} AS "Root") TO '{TEMP_DIR}/json_ci_merge_3.json' (FORMAT JSON)
+
+statement error
+SELECT * FROM read_json_auto(['{TEMP_DIR}/json_ci_merge_1.json', '{TEMP_DIR}/json_ci_merge_2.json', '{TEMP_DIR}/json_ci_merge_3.json'], union_by_name=true)
+----
+Duplicate name
+
+query I
+SELECT root.inner
+FROM read_json_auto(['{TEMP_DIR}/json_ci_merge_1.json', '{TEMP_DIR}/json_ci_merge_2.json', '{TEMP_DIR}/json_ci_merge_3.json'],
+                    union_by_name=true,
+                    case_insensitive_property_merging=true)
+ORDER BY 1
+----
+1
+2
+3

@@ -105,7 +105,7 @@ public:
 			for (idx_t i = 0; i < next; i++) {
 				const auto &val = scan_state.values[i];
 				if (val) {
-					JSONStructure::ExtractStructure(val, node, true);
+					JSONStructure::ExtractStructure(val, node, true, options.case_insensitive_property_merging);
 				}
 			}
 			remaining -= next;
@@ -113,8 +113,8 @@ public:
 				continue;
 			}
 			node.InitializeCandidateTypes(options.max_depth, options.convert_strings_to_integers);
-			node.RefineCandidateTypes(scan_state.values, next, string_vector, allocator,
-			                          auto_detect_state.date_format_map);
+			node.RefineCandidateTypes(scan_state.values, next, string_vector, allocator, auto_detect_state.date_format_map,
+			                          options.case_insensitive_property_merging);
 		}
 		auto_detect_state.total_file_size += file_size;
 		auto_detect_state.bytes_scanned += total_read_size;
@@ -178,7 +178,7 @@ void JSONScan::AutoDetect(ClientContext &context, MultiFileBindData &bind_data, 
 
 	// Merge task nodes into one
 	for (auto &task_node : task_nodes) {
-		JSONStructure::MergeNodes(node, task_node);
+		JSONStructure::MergeNodes(node, task_node, options.case_insensitive_property_merging);
 	}
 
 	// set the max threads/estimated per-file cardinality
@@ -258,6 +258,7 @@ TableFunctionSet CreateJSONFunctionInfo(string name, shared_ptr<JSONScanInfo> in
 	table_function.named_parameters["field_appearance_threshold"] = LogicalType::DOUBLE;
 	table_function.named_parameters["convert_strings_to_integers"] = LogicalType::BOOLEAN;
 	table_function.named_parameters["map_inference_threshold"] = LogicalType::BIGINT;
+	table_function.named_parameters["case_insensitive_property_merging"] = LogicalType::BOOLEAN;
 	return MultiFileReader::CreateFunctionSet(table_function);
 }
 
