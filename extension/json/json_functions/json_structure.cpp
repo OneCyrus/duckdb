@@ -417,8 +417,7 @@ JSONStructureNode &JSONStructureDescription::GetOrCreateChild(const char *key_pt
 }
 
 JSONStructureNode &JSONStructureDescription::GetOrCreateChild(yyjson_val *key, yyjson_val *val,
-                                                              const bool ignore_errors,
-                                                              const bool case_insensitive) {
+                                                              const bool ignore_errors, const bool case_insensitive) {
 	D_ASSERT(yyjson_is_str(key));
 	auto &child = GetOrCreateChild(unsafe_yyjson_get_str(key), unsafe_yyjson_get_len(key), case_insensitive);
 	JSONStructure::ExtractStructure(val, child, ignore_errors, case_insensitive);

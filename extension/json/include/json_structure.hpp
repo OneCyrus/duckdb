@@ -92,7 +92,7 @@ public:
 struct JSONStructure {
 public:
 	static void ExtractStructure(yyjson_val *val, JSONStructureNode &node, bool ignore_errors,
-	                            bool case_insensitive_property_merging = false);
+	                             bool case_insensitive_property_merging = false);
 	static void MergeNodes(JSONStructureNode &merged, const JSONStructureNode &node,
 	                       bool case_insensitive_property_merging = false);
 	static LogicalType StructureToType(ClientContext &context, const JSONStructureNode &node, idx_t max_depth,

@@ -1,4 +1,5 @@
 # name: test/sql/json/table/read_json_case_insensitive_property_merging.test
+# group: [table]
 
 statement ok
 COPY (SELECT {'Inner': 1} AS "Root") TO '{TEMP_DIR}/json_ci_merge_1.json' (FORMAT JSON)
