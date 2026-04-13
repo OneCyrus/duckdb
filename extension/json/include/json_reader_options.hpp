@@ -117,6 +117,8 @@ struct JSONReaderOptions {
 	//! If a struct contains more fields than this threshold with at least 80% similar types,
 	//! we infer it as MAP type
 	idx_t map_inference_threshold = 200;
+	//! Whether JSON object properties are merged case-insensitively during schema detection and transforms
+	bool case_insensitive_property_merging = false;
 	//! User-provided list of names (in order)
 	vector<string> name_list;
 	//! User-provided list of types (in order)

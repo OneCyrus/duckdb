@@ -9,6 +9,7 @@
 #pragma once
 
 #include "json_common.hpp"
+#include "duckdb/common/case_insensitive_map.hpp"
 
 namespace duckdb {
 
@@ -35,13 +36,15 @@ public:
 	bool ContainsVarchar() const;
 	void InitializeCandidateTypes(idx_t max_depth, bool convert_strings_to_integers, idx_t depth = 0);
 	void RefineCandidateTypes(yyjson_val *vals[], idx_t val_count, Vector &string_vector, ArenaAllocator &allocator,
-	                          MutableDateFormatMap &date_format_map);
+	                          MutableDateFormatMap &date_format_map, bool case_insensitive_property_merging = false);
 
 private:
 	void RefineCandidateTypesArray(yyjson_val *vals[], idx_t val_count, Vector &string_vector,
-	                               ArenaAllocator &allocator, MutableDateFormatMap &date_format_map);
+	                               ArenaAllocator &allocator, MutableDateFormatMap &date_format_map,
+	                               bool case_insensitive_property_merging);
 	void RefineCandidateTypesObject(yyjson_val *vals[], idx_t val_count, Vector &string_vector,
-	                                ArenaAllocator &allocator, MutableDateFormatMap &date_format_map);
+	                                ArenaAllocator &allocator, MutableDateFormatMap &date_format_map,
+	                                bool case_insensitive_property_merging);
 	void RefineCandidateTypesString(yyjson_val *vals[], idx_t val_count, Vector &string_vector,
 	                                MutableDateFormatMap &date_format_map);
 	void EliminateCandidateTypes(idx_t vec_count, Vector &string_vector, MutableDateFormatMap &date_format_map);
@@ -67,8 +70,8 @@ public:
 	JSONStructureDescription &operator=(JSONStructureDescription &&) noexcept;
 
 	JSONStructureNode &GetOrCreateChild();
-	JSONStructureNode &GetOrCreateChild(const char *key_ptr, size_t key_size);
-	JSONStructureNode &GetOrCreateChild(yyjson_val *key, yyjson_val *val, bool ignore_errors);
+	JSONStructureNode &GetOrCreateChild(const char *key_ptr, size_t key_size, bool case_insensitive);
+	JSONStructureNode &GetOrCreateChild(yyjson_val *key, yyjson_val *val, bool ignore_errors, bool case_insensitive);
 
 public:
 	//! Type of this description
@@ -76,6 +79,7 @@ public:
 
 	//! Map to children and children
 	json_key_map_t<idx_t> key_map;
+	case_insensitive_map_t<idx_t> ci_key_map;
 	vector<JSONStructureNode> children;
 
 	//! Candidate types (if auto-detecting and type == LogicalTypeId::VARCHAR)
@@ -87,8 +91,10 @@ public:
 
 struct JSONStructure {
 public:
-	static void ExtractStructure(yyjson_val *val, JSONStructureNode &node, bool ignore_errors);
-	static void MergeNodes(JSONStructureNode &merged, const JSONStructureNode &node);
+	static void ExtractStructure(yyjson_val *val, JSONStructureNode &node, bool ignore_errors,
+	                             bool case_insensitive_property_merging = false);
+	static void MergeNodes(JSONStructureNode &merged, const JSONStructureNode &node,
+	                       bool case_insensitive_property_merging = false);
 	static LogicalType StructureToType(ClientContext &context, const JSONStructureNode &node, idx_t max_depth,
 	                                   double field_appearance_threshold, idx_t map_inference_threshold,
 	                                   idx_t depth = 0, const LogicalType &null_type = LogicalType::JSON());
