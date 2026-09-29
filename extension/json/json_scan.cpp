@@ -122,6 +122,7 @@ unique_ptr<FunctionData> JSONScan::Deserialize(Deserializer &deserializer, Table
 void JSONScan::TableFunctionDefaults(TableFunction &table_function) {
 	table_function.named_parameters["maximum_object_size"] = LogicalType::UINTEGER;
 	table_function.named_parameters["ignore_errors"] = LogicalType::BOOLEAN;
+	table_function.named_parameters["ignore_case"] = LogicalType::BOOLEAN;
 	table_function.named_parameters["format"] = LogicalType::VARCHAR;
 	table_function.named_parameters["compression"] = LogicalType::VARCHAR;
 
@@ -161,6 +162,10 @@ bool JSONScan::ParseOption(ClientContext &context, const Identifier &key, const 
 	}
 	if (key == "ignore_errors") {
 		options.ignore_errors = BooleanValue::Get(value);
+		return true;
+	}
+	if (key == "ignore_case") {
+		options.ignore_case = BooleanValue::Get(value);
 		return true;
 	}
 	if (key == "maximum_object_size") {
@@ -390,6 +395,7 @@ void JSONScan::FinalizeBind(JSONScanData &json_data, vector<Identifier> &names) 
 	transform_options.error_duplicate_key = !options.ignore_errors;
 	transform_options.error_missing_key = false;
 	transform_options.error_unknown_key = options.auto_detect && !options.ignore_errors;
+	transform_options.ignore_case = options.ignore_case;
 	transform_options.date_format_map = json_data.date_format_map.get();
 	transform_options.delay_error = true;
 
