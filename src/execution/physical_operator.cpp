@@ -97,6 +97,10 @@ unique_ptr<OperatorState> PhysicalOperator::GetOperatorState(ExecutionContext &c
 	return make_uniq<OperatorState>();
 }
 
+vector<bool> PhysicalOperator::GetExecuteOutputBufferMask() const {
+	return vector<bool>(types.size(), true);
+}
+
 unique_ptr<GlobalOperatorState> PhysicalOperator::GetGlobalOperatorState(ClientContext &context) const {
 	return make_uniq<GlobalOperatorState>();
 }

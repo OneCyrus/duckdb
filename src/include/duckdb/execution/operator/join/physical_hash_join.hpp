@@ -77,6 +77,7 @@ public:
 public:
 	// Operator Interface
 	unique_ptr<OperatorState> GetOperatorState(ExecutionContext &context) const override;
+	vector<bool> GetExecuteOutputBufferMask() const override;
 
 	bool ParallelOperator() const override {
 		return true;

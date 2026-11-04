@@ -2036,6 +2036,20 @@ public:
 	}
 };
 
+vector<bool> PhysicalHashJoin::GetExecuteOutputBufferMask() const {
+	auto mask = PhysicalOperator::GetExecuteOutputBufferMask();
+	if (join_type == JoinType::RIGHT_SEMI || join_type == JoinType::RIGHT_ANTI) {
+		return mask;
+	}
+	// the probe-side output columns are always referenced or sliced from the probe input
+	// column 0 keeps its buffer: DataChunk derives its size from the first column that has one
+	D_ASSERT(lhs_output_columns.col_types.size() <= mask.size());
+	for (idx_t i = 1; i < lhs_output_columns.col_types.size(); i++) {
+		mask[i] = false;
+	}
+	return mask;
+}
+
 unique_ptr<OperatorState> PhysicalHashJoin::GetOperatorState(ExecutionContext &context) const {
 	auto &allocator = BufferAllocator::Get(context.client);
 	auto &sink = sink_state->Cast<HashJoinGlobalSinkState>();

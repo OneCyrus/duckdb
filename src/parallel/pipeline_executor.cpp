@@ -61,7 +61,12 @@ PipelineExecutor::PipelineExecutor(ClientContext &context_p, Pipeline &pipeline_
 		auto &current_operator = pipeline.operators[i].get();
 
 		auto chunk = make_uniq<DataChunk>();
-		chunk->Initialize(BufferAllocator::Get(context.client), prev_operator.GetTypes());
+		if (i == 0) {
+			chunk->Initialize(BufferAllocator::Get(context.client), prev_operator.GetTypes());
+		} else {
+			chunk->Initialize(BufferAllocator::Get(context.client), prev_operator.GetTypes(),
+			                  prev_operator.GetExecuteOutputBufferMask());
+		}
 		intermediate_chunks.push_back(std::move(chunk));
 
 		auto op_state = current_operator.GetOperatorState(context);
