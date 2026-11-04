@@ -1,0 +1,100 @@
+# name: test/sql/join/full_outer/test_full_outer_join_unique_keys.test
+# description: FULL OUTER JOIN with unique build keys (single-pass probe)
+# group: [full_outer]
+
+statement ok
+SET threads=4;
+
+# two VARCHAR keys, unique per table, partial overlap, NULL keys on both sides
+statement ok
+CREATE TABLE l AS
+SELECT CASE WHEN i % 997 = 0 THEN NULL ELSE 'customer-' || (i // 100)::VARCHAR END AS a,
+       'product-' || (i % 100)::VARCHAR AS b,
+       i AS lv
+FROM range(30000) t(i) WHERE i % 3 <> 0;
+
+statement ok
+CREATE TABLE r AS
+SELECT CASE WHEN i % 991 = 0 THEN NULL ELSE 'customer-' || (i // 100)::VARCHAR END AS a,
+       'product-' || (i % 100)::VARCHAR AS b,
+       i * 2 AS rv
+FROM range(10000, 45000) t(i) WHERE i % 5 <> 0;
+
+statement ok
+CREATE TABLE expected AS
+SELECT l.a AS la, l.b AS lb, lv, r.a AS ra, r.b AS rb, rv FROM l LEFT JOIN r ON l.a = r.a AND l.b = r.b
+UNION ALL
+SELECT NULL, NULL, NULL, r.a, r.b, rv FROM r WHERE NOT EXISTS (SELECT 1 FROM l WHERE l.a = r.a AND l.b = r.b);
+
+query IIII
+SELECT count(*), count(lv), count(rv), count(lv + rv) FROM expected;
+----
+37355	20000	28000	10645
+
+query I
+SELECT count(*) FROM (
+	(SELECT l.a, l.b, lv, r.a, r.b, rv FROM l FULL OUTER JOIN r ON l.a = r.a AND l.b = r.b
+	 EXCEPT ALL SELECT * FROM expected)
+	UNION ALL
+	(SELECT * FROM expected
+	 EXCEPT ALL SELECT l.a, l.b, lv, r.a, r.b, rv FROM l FULL OUTER JOIN r ON l.a = r.a AND l.b = r.b)
+);
+----
+0
+
+# build and probe side swapped
+query I
+SELECT count(*) FROM (
+	(SELECT l.a, l.b, lv, r.a, r.b, rv FROM r FULL OUTER JOIN l ON l.a = r.a AND l.b = r.b
+	 EXCEPT ALL SELECT * FROM expected)
+	UNION ALL
+	(SELECT * FROM expected
+	 EXCEPT ALL SELECT l.a, l.b, lv, r.a, r.b, rv FROM r FULL OUTER JOIN l ON l.a = r.a AND l.b = r.b)
+);
+----
+0
+
+# residual predicate: build rows that fail it must still be emitted as unmatched
+statement ok
+CREATE TABLE expected_residual AS
+SELECT l.a AS la, l.b AS lb, lv, r.a AS ra, r.b AS rb, rv FROM l LEFT JOIN r ON l.a = r.a AND l.b = r.b AND lv * 3 > rv
+UNION ALL
+SELECT NULL, NULL, NULL, r.a, r.b, rv FROM r
+WHERE NOT EXISTS (SELECT 1 FROM l WHERE l.a = r.a AND l.b = r.b AND lv * 3 > rv);
+
+query I
+SELECT count(*) FROM (
+	(SELECT l.a, l.b, lv, r.a, r.b, rv FROM l FULL OUTER JOIN r ON l.a = r.a AND l.b = r.b AND lv * 3 > rv
+	 EXCEPT ALL SELECT * FROM expected_residual)
+	UNION ALL
+	(SELECT * FROM expected_residual
+	 EXCEPT ALL SELECT l.a, l.b, lv, r.a, r.b, rv FROM l FULL OUTER JOIN r ON l.a = r.a AND l.b = r.b AND lv * 3 > rv)
+);
+----
+0
+
+# duplicate build keys (multi-match path) remain correct
+statement ok
+CREATE TABLE r_dup AS SELECT * FROM r UNION ALL SELECT * FROM r WHERE rv % 7 = 0;
+
+query IIII
+SELECT count(*), count(lv), count(rv), count(lv + rv) FROM l FULL OUTER JOIN r_dup ON l.a = r_dup.a AND l.b = r_dup.b;
+----
+41355	21519	32000	12164
+
+# chain of full outer joins with COALESCE keys and per-column priority
+statement ok
+CREATE TABLE s AS
+SELECT 'customer-' || (i // 100)::VARCHAR AS a, 'product-' || (i % 100)::VARCHAR AS b, i AS sv
+FROM range(20000, 50000) t(i) WHERE i % 4 <> 0;
+
+query IIII
+SELECT count(*), count(DISTINCT (a, b)), sum(v), count(v)
+FROM (
+	SELECT coalesce(l.a, r.a, s.a) AS a, coalesce(l.b, r.b, s.b) AS b, coalesce(lv, rv, sv) AS v
+	FROM l
+	FULL OUTER JOIN r ON l.a = r.a AND l.b = r.b
+	FULL OUTER JOIN s ON coalesce(l.a, r.a) = s.a AND coalesce(l.b, r.b) = s.b
+);
+----
+43867	43859	1689600878	43867

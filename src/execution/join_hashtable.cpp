@@ -6,6 +6,7 @@
 #include "duckdb/common/radix_partitioning.hpp"
 #include "duckdb/common/vector_operations/vector_operations.hpp"
 #include "duckdb/common/types/column/column_data_collection.hpp"
+#include "duckdb/common/types/sel_cache.hpp"
 #include "duckdb/execution/ht_entry.hpp"
 #include "duckdb/logging/log_manager.hpp"
 #include "duckdb/execution/expression_executor.hpp"
@@ -1498,10 +1499,8 @@ void ScanStructure::Next(DataChunk &keys, DataChunk &probe_data, DataChunk &resu
 	case JoinType::RIGHT_SEMI:
 		NextRightSemiOrAntiJoin(keys, probe_data);
 		break;
-	case JoinType::OUTER:
-		NextLeftJoin(keys, probe_data, result);
-		break;
 	case JoinType::LEFT:
+	case JoinType::OUTER:
 		if (!ht.chains_longer_than_one.load(std::memory_order_relaxed)) {
 			NextUniqueLeftJoin(keys, probe_data, result);
 		} else {
@@ -1753,6 +1752,17 @@ void ScanStructure::UpdateCompactionBuffer(idx_t base_count, SelectionVector &re
 	VectorOperations::Copy(pointers, rhs_pointers, result_vector, result_count, 0, base_count);
 }
 
+//! Slice the LHS output columns of probe_data into result, merging shared dictionary selections only once
+static void SliceProbeOutput(const vector<idx_t> &lhs_output_in_probe, DataChunk &probe_data,
+                             const SelectionVector &sel, idx_t count, DataChunk &result) {
+	SelCache merge_cache;
+	for (idx_t i = 0; i < lhs_output_in_probe.size(); i++) {
+		auto &target = result.data[i];
+		target.Reference(probe_data.data[lhs_output_in_probe[i]]);
+		target.Slice(sel, count, merge_cache);
+	}
+}
+
 void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &probe_data, DataChunk &result) {
 	if (ht.join_type != JoinType::RIGHT_SEMI && ht.join_type != JoinType::RIGHT_ANTI) {
 		D_ASSERT(result.ColumnCount() == ht.lhs_output_in_probe.size() + ht.output_columns.size());
@@ -1796,13 +1806,13 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &probe_data, DataCh
 					// extract only OUTPUT columns from probe_data
 					const auto full_identity =
 					    SelectionIsFullIdentity(chain_match_sel_vector, result_count, probe_data.size());
-					for (idx_t i = 0; i < ht.lhs_output_in_probe.size(); i++) {
-						idx_t probe_col_idx = ht.lhs_output_in_probe[i];
-						if (full_identity) {
-							result.data[i].Reference(probe_data.data[probe_col_idx]);
-						} else {
-							result.data[i].Slice(probe_data.data[probe_col_idx], chain_match_sel_vector, result_count);
+					if (full_identity) {
+						for (idx_t i = 0; i < ht.lhs_output_in_probe.size(); i++) {
+							result.data[i].Reference(probe_data.data[ht.lhs_output_in_probe[i]]);
 						}
+					} else {
+						SliceProbeOutput(ht.lhs_output_in_probe, probe_data, chain_match_sel_vector, result_count,
+						                 result);
 					}
 					// on the RHS, we need to fetch the data from the hash table
 					ht.GatherRHS(pointers, chain_match_sel_vector, result_count, result, ht.lhs_output_in_probe.size());
@@ -1822,13 +1832,12 @@ void ScanStructure::NextInnerJoin(DataChunk &keys, DataChunk &probe_data, DataCh
 	if (base_count > 0) {
 		// extract only OUTPUT columns from probe_data using compaction buffer
 		const auto full_identity = SelectionIsFullIdentity(lhs_sel_vector, base_count, probe_data.size());
-		for (idx_t i = 0; i < ht.lhs_output_in_probe.size(); i++) {
-			idx_t probe_col_idx = ht.lhs_output_in_probe[i];
-			if (full_identity) {
-				result.data[i].Reference(probe_data.data[probe_col_idx]);
-			} else {
-				result.data[i].Slice(probe_data.data[probe_col_idx], lhs_sel_vector, base_count);
+		if (full_identity) {
+			for (idx_t i = 0; i < ht.lhs_output_in_probe.size(); i++) {
+				result.data[i].Reference(probe_data.data[ht.lhs_output_in_probe[i]]);
 			}
+		} else {
+			SliceProbeOutput(ht.lhs_output_in_probe, probe_data, lhs_sel_vector, base_count, result);
 		}
 		// 2) gather RHS vectors
 		ht.GatherRHS(rhs_pointers, *FlatVector::IncrementalSelectionVector(), base_count, result,
@@ -1874,10 +1883,7 @@ void ScanStructure::NextSemiOrAntiJoin(DataChunk &keys, DataChunk &probe_data, D
 	// construct the final result
 	if (result_count > 0) {
 		// extract only OUTPUT columns from probe_data
-		for (idx_t i = 0; i < ht.lhs_output_in_probe.size(); i++) {
-			idx_t probe_col_idx = ht.lhs_output_in_probe[i];
-			result.data[i].Slice(probe_data.data[probe_col_idx], sel, result_count);
-		}
+		SliceProbeOutput(ht.lhs_output_in_probe, probe_data, sel, result_count, result);
 	} else {
 		D_ASSERT(result.size() == 0);
 	}
@@ -2170,10 +2176,7 @@ void ScanStructure::NextLeftJoin(DataChunk &keys, DataChunk &probe_data, DataChu
 
 		if (remaining_count > 0) {
 			// extract only OUTPUT columns from probe_data
-			for (idx_t i = 0; i < ht.lhs_output_in_probe.size(); i++) {
-				idx_t probe_col_idx = ht.lhs_output_in_probe[i];
-				result.data[i].Slice(probe_data.data[probe_col_idx], sel, remaining_count);
-			}
+			SliceProbeOutput(ht.lhs_output_in_probe, probe_data, sel, remaining_count, result);
 			// now set the right side to NULL
 			for (idx_t i = ht.lhs_output_in_probe.size(); i < result.ColumnCount(); i++) {
 				Vector &vec = result.data[i];
@@ -2250,7 +2253,7 @@ void ScanStructure::NextSingleJoin(DataChunk &keys, DataChunk &probe_data, DataC
 }
 
 void ScanStructure::NextUniqueLeftJoin(DataChunk &keys, DataChunk &probe_data, DataChunk &result) {
-	// Unique left join: RHS has unique keys, so at most one match per LHS row.
+	// Unique left/full outer join: RHS has unique keys, so at most one match per LHS row.
 	// Single pass - no state machine needed.
 	D_ASSERT(!ht.chains_longer_than_one.load(std::memory_order_relaxed));
 
@@ -2259,11 +2262,21 @@ void ScanStructure::NextUniqueLeftJoin(DataChunk &keys, DataChunk &probe_data, D
 	// Should always be 0 after scanning key matches once when !ht.chains_longer_than_one
 	D_ASSERT(this->count == 0);
 
+	const idx_t probe_size = probe_data.size();
+	if (PropagatesBuildSide(ht.join_type)) {
+		// full outer join: mark matched build rows as FOUND (pointers of matched rows are not advanced)
+		auto ptrs = FlatVector::GetData<data_ptr_t>(pointers);
+		for (idx_t j = 0; j < probe_size; j++) {
+			if (found_match[j]) {
+				Store<bool>(true, ptrs[j] + ht.tuple_size);
+			}
+		}
+	}
+
 	// Build result_sel from found_match so we know which positions to gather RHS data from.
 	// Use a predicated increment to avoid branch mispredictions.
 	idx_t result_count = 0;
 	SelectionVector result_sel(STANDARD_VECTOR_SIZE);
-	const idx_t probe_size = probe_data.size();
 	for (idx_t j = 0; j < probe_size; j++) {
 		result_sel.set_index(result_count, j);
 		result_count += found_match[j];
